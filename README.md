@@ -110,14 +110,15 @@ docker compose -f compose.yaml -f compose.wiremock.yaml down
 
 Por defecto la IA está desactivada y `GET /lists/{listName}/recommendations` responde con una lista fija
 (`origen: RESPALDO`). Un archivo adicional levanta [Ollama](https://ollama.com) y la pasarela
-[LiteLLM](https://docs.litellm.ai) y activa la IA en la API. Todo se ejecuta en tu equipo; no hay que instalar nada
+[LiteLLM](https://docs.litellm.ai), una base de datos PostgreSQL con pgvector para el catálogo de canciones, y activa la
+IA en la API. Todo se ejecuta en tu equipo; no hay que instalar nada
 fuera de Docker.
 
 ### Requisitos
 
 | Recurso | Medido o necesario |
 |---|---|
-| Memoria del motor de Docker | los servicios de la IA y la API usan unos 4,3 GiB en CPU; deja al menos 8 GiB |
+| Memoria del motor de Docker | en reposo y en CPU: `ollama` 4,3 GiB, `litellm` 1 GiB, `api` 0,4 GiB y `catalog-db` 40 MiB; deja al menos 8 GiB |
 | Disco | imágenes de varios GB (Ollama es la mayor) y 2,2 GB de modelos |
 | GPU | opcional: NVIDIA con controlador compatible; en Windows, Docker Desktop con WSL 2 actualizado |
 | Red | solo la primera vez, para imágenes y modelos |
@@ -140,6 +141,21 @@ Add-Content .env ("AI_API_KEY=sk-" + [BitConverter]::ToString($b).Replace('-', '
 
 En desarrollo local esta clave es la clave maestra de LiteLLM. Fuera de tu equipo haría falta una clave virtual con
 límites, que requiere una base de datos en LiteLLM y no está incluida.
+
+Añade también `CATALOG_DB_PASSWORD`, la contraseña que quieras para PostgreSQL (por ejemplo, `openssl rand -hex 24`).
+
+**Si ya usabas la composición de la IA** (HU-12), añade esa variable antes de volver a levantarla: sin ella Compose no
+arranca. Los modelos descargados se conservan.
+
+### Catálogo (PostgreSQL con pgvector)
+
+- `catalog-db` crea el esquema con [`compose/catalog-db/init.sql`](compose/catalog-db/init.sql) cuando su volumen
+  `catalog-data` está vacío, y solo escucha en `127.0.0.1`.
+- `catalog-index` indexa el catálogo del backend y termina; su registro dice cuántas canciones añadió, conservó y
+  quitó. En CPU, indexar unas 200 canciones tardó unos 4 s. Para repetirlo:
+  `docker compose -f compose.yaml -f compose.ai.yaml run --rm catalog-index`.
+- La API no espera a ninguno de los dos: sin catálogo responde `RESPALDO`.
+- `down -v` borra también el catálogo indexado y los modelos.
 
 ### Arrancar
 
@@ -164,7 +180,7 @@ Para no reemplazar otra pila del proyecto en el mismo equipo, añade `-p <nombre
 
 ### Latencia medida
 
-Con `llama3.2:3b` en una RTX 5070 de 12 GB:
+Con `llama3.2:3b` en una RTX 5070 de 12 GB, medida antes de usar el catálogo (prompt más corto):
 
 | Situación | CPU | GPU |
 |---|---|---|
@@ -182,7 +198,11 @@ también el tiempo de espera del servidor web.
 | `AI_API_KEY` | — (obligatoria con `compose.ai.yaml`) | clave de LiteLLM |
 | `OLLAMA_CHAT_MODEL` | `llama3.2:3b` | modelo detrás de `recomendador-chat` |
 | `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | modelo detrás de `recomendador-embeddings` |
-| `AI_TIMEOUT` | `30s` | tiempo máximo de la llamada al modelo |
+| `AI_TIMEOUT` | `30s` | tiempo máximo de la búsqueda y la llamada al modelo |
+| `CATALOG_DB_PASSWORD` | — (obligatoria con `compose.ai.yaml`) | contraseña de PostgreSQL |
+| `CATALOG_DB_PORT` | `5433` | puerto de PostgreSQL en tu equipo |
+| `CATALOG_RETRIEVAL_TIMEOUT` | `5s` | tiempo máximo del embedding y la búsqueda |
+| `AI_EMBEDDING_MODEL` | `recomendador-embeddings` | alias de embeddings que pide el backend |
 | `AI_CHAT_MODEL` | `recomendador-chat` | alias que pide el backend |
 | `LITELLM_PORT` | `4000` | puerto de LiteLLM en tu equipo |
 
