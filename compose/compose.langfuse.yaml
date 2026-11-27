@@ -140,7 +140,8 @@ services:
 
   # La pasarela envía una traza por cada llamada de chat. Ni el backend ni la pasarela dependen de Langfuse.
   litellm:
-    command: ["--config", "/etc/litellm/config.langfuse.yaml", "--port", "4000"]
+    # Cierra las conexiones inactivas después que el cliente: con los 5 s por defecto, el backend reutiliza una ya cerrada.
+    command: ["--config", "/etc/litellm/config.langfuse.yaml", "--port", "4000", "--keepalive_timeout", "75"]
     environment:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:?define LANGFUSE_PUBLIC_KEY en compose/.env}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:?define LANGFUSE_SECRET_KEY en compose/.env}
