@@ -1,0 +1,24 @@
+# Configuración local de `make up`. Copia este archivo como `terraform/local.tfvars` (no se versiona) y descomenta
+# solo lo que quieras cambiar. Sin este archivo se usan los valores por defecto y se generan los secretos.
+
+# ai_enabled     = true   # IA en Docker y conectada con la API
+# gpu            = "auto" # "auto", "on" u "off"
+# argocd_enabled = false  # desplegar la rama main de GitHub con Argo CD
+# web_port       = 4200   # puerto de la web en 127.0.0.1
+# api_port       = 8080   # puerto de la API en 127.0.0.1
+
+# Secretos: se generan si no los defines.
+# jwt_secret          = "" # 32 bytes como mínimo
+# demo_user_password  = "" # de 1 a 72 bytes
+# demo_admin_password = "" # de 1 a 72 bytes
+# ai_api_key          = "" # empieza por sk-
+# catalog_db_password = "" # solo letras y números; cambiarla después exige `make clean`
+
+# Credenciales opcionales de Spotify.
+# spotify_client_id     = ""
+# spotify_client_secret = ""
+
+# Modelos y tiempo máximo de la recomendación.
+# ollama_chat_model      = "llama3.2:3b"
+# ollama_embedding_model = "nomic-embed-text"
+# ai_timeout             = "30s"
