@@ -10,6 +10,8 @@ services:
     environment:
       - OLLAMA_NO_CLOUD=1
       - OLLAMA_KEEP_ALIVE=-1
+      # Con el contexto por defecto, un prompt largo se recorta sin error, instrucciones incluidas.
+      - OLLAMA_CONTEXT_LENGTH=16384
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:
@@ -75,6 +77,47 @@ services:
       retries: 12
       start_period: 30s
 
+  # PostgreSQL con pgvector, solo para el catálogo de canciones. El esquema se crea con el volumen vacío.
+  catalog-db:
+    image: pgvector/pgvector:0.8.7-pg18-trixie@sha256:ab49524d18df7200b74ac9a475e1db6297fc1eb57da4c214c63d10ecc4b754fa
+    environment:
+      - POSTGRES_DB=catalog
+      - POSTGRES_USER=catalog
+      - POSTGRES_PASSWORD=${CATALOG_DB_PASSWORD:?define CATALOG_DB_PASSWORD en compose/.env}
+    volumes:
+      - catalog-data:/var/lib/postgresql
+      - ./catalog-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:${CATALOG_DB_PORT:-5433}:5432"
+    healthcheck:
+      # Por la red: mientras se crea el esquema, PostgreSQL solo atiende en su socket local.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "catalog", "-d", "catalog"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # Indexa el catálogo y termina. Repetirlo solo cambia lo que haya cambiado:
+  #   docker compose -p quipux-ia -f compose.yaml -f compose.ai.yaml run --rm catalog-index
+  catalog-index:
+    build: ../../quipux-playlist-backend
+    command: ["index-catalog"]
+    environment:
+      - AI_PROVIDER=openai
+      - AI_BASE_URL=http://litellm:4000/v1
+      - AI_API_KEY=${AI_API_KEY:?define AI_API_KEY en compose/.env}
+      - AI_EMBEDDING_MODEL
+      # Un lote de canciones tarda más que una consulta.
+      - AI_EMBEDDING_TIMEOUT=120s
+      - CATALOG_DB_URL=jdbc:postgresql://catalog-db:5432/catalog
+      - CATALOG_DB_PASSWORD=${CATALOG_DB_PASSWORD:?define CATALOG_DB_PASSWORD en compose/.env}
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    restart: "no"
+
   # Activa la IA en la API. No depende de los servicios anteriores: arranca aunque no estén.
   api:
     environment:
@@ -83,6 +126,11 @@ services:
       - AI_API_KEY=${AI_API_KEY:?define AI_API_KEY en compose/.env}
       - AI_TIMEOUT
       - AI_CHAT_MODEL
+      - AI_EMBEDDING_MODEL
+      - CATALOG_DB_URL=jdbc:postgresql://catalog-db:5432/catalog
+      - CATALOG_DB_PASSWORD=${CATALOG_DB_PASSWORD:?define CATALOG_DB_PASSWORD en compose/.env}
+      - CATALOG_RETRIEVAL_TIMEOUT
 
 volumes:
   ollama-models:
+  catalog-data:

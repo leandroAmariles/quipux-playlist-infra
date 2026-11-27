@@ -12,6 +12,8 @@ model_list:
       model: os.environ/LITELLM_EMBEDDING_MODEL
       api_base: http://ollama:11434
       timeout: 120
+      # El SDK del backend siempre lo envía y Ollama no lo admite: sin esto, todo embedding falla con 400.
+      additional_drop_params: ["encoding_format"]
     model_info:
       mode: embedding
 
