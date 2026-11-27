@@ -1,0 +1,11 @@
+# Ejecuta los modelos en una GPU NVIDIA. Se añade después de compose.ai.yaml:
+#   docker compose -p quipux-ia -f compose.yaml -f compose.ai.yaml -f compose.ai.gpu.yaml up -d --build
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
