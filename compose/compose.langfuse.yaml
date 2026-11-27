@@ -94,7 +94,7 @@ services:
       retries: 20
 
   langfuse-clickhouse:
-    image: clickhouse/clickhouse-server:26.10.4.207@sha256:4f491abc44d9f4a1747c033c35ddd5bc385521305d85ca8251ba0824ff597035
+    image: clickhouse/clickhouse-server:26.10.12.13@sha256:15365147d687bb5682ea3d5d02d6c62a625c55846bc907900d255e7f491e6816
     user: "101:101"
     environment:
       CLICKHOUSE_DB: default
