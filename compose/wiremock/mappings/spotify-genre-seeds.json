@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/v1/recommendations/available-genre-seeds",
+    "headers": {
+      "Authorization": {
+        "equalTo": "Bearer simulado"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "genres": ["acoustic", "pop", "rock", "salsa"]
+    }
+  }
+}
