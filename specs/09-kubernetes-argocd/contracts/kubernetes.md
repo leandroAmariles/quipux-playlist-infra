@@ -34,7 +34,7 @@ k8s/
   - `SPOTIFY_ACCOUNTS_BASE_URL: "https://accounts.spotify.com"`
   - `SPOTIFY_API_BASE_URL: "https://api.spotify.com"`
   - `SPOTIFY_TIMEOUT: "3s"`
-  - `API_URL: "http://api:8080"`
+  - `API_URL: "http://api.quipux-playlist.svc.cluster.local:8080"`
 
 ### `Secret` de ejemplo y creación manual (`playlist-secrets`)
 

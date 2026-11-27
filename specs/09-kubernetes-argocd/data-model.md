@@ -31,7 +31,7 @@ No hay entidades nuevas de negocio ni tablas de base de datos. Estos son los obj
 | `SPOTIFY_ACCOUNTS_BASE_URL` | `ConfigMap` (`playlist-config`) | No | `https://accounts.spotify.com` |
 | `SPOTIFY_API_BASE_URL` | `ConfigMap` (`playlist-config`) | No | `https://api.spotify.com` |
 | `SPOTIFY_TIMEOUT` | `ConfigMap` (`playlist-config`) | No | `3s` |
-| `API_URL` | `ConfigMap` (`playlist-config`) | Sí (para `web`) | `http://api:8080` |
+| `API_URL` | `ConfigMap` (`playlist-config`) | Sí (para `web`) | `http://api.quipux-playlist.svc.cluster.local:8080` |
 | `JWT_SECRET` | `Secret` (`playlist-secrets`) | Sí | Mínimo 32 bytes; creado manualmente |
 | `DEMO_USER_PASSWORD` | `Secret` (`playlist-secrets`) | Sí | 1 a 72 bytes; creado manualmente |
 | `DEMO_ADMIN_PASSWORD` | `Secret` (`playlist-secrets`) | Sí | 1 a 72 bytes; creado manualmente |
