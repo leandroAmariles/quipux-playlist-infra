@@ -15,7 +15,7 @@ resources:
 images:
 - name: ghcr.io/leandroamariles/quipux-playlist-backend
   newName: ghcr.io/leandroamariles/quipux-playlist-backend
-  newTag: 0.3.0
+  newTag: 0.3.1
 - name: ghcr.io/leandroamariles/quipux-playlist-frontend
   newName: ghcr.io/leandroamariles/quipux-playlist-frontend
   newTag: 0.2.0
