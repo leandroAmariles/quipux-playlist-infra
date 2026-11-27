@@ -131,3 +131,26 @@ cuatro de credenciales y direcciones de Spotify quedan fijadas.
 | La construcción no encuentra una ruta | falta un repositorio hermano o tiene otro nombre |
 | `port is already allocated` o `ports are not available` | el puerto está ocupado; cambia `WEB_PORT` o `API_PORT` |
 | La web responde `502` | la API se está reiniciando o no está en marcha |
+
+## Imágenes publicadas
+
+Cada release de backend y frontend publica su imagen en GHCR, con el número de versión como etiqueta:
+
+- `ghcr.io/leandroamariles/quipux-playlist-backend:X.Y.Z`
+- `ghcr.io/leandroamariles/quipux-playlist-frontend:X.Y.Z`
+
+La composición de este repositorio no las usa: sigue construyendo desde el código.
+
+## Dependencias y protección de `main`
+
+Dependabot revisa cada semana las imágenes de Compose ([`dependabot.yml`](.github/dependabot.yml)). Sus PR se revisan a
+mano porque este repositorio todavía no tiene CI.
+
+`main` solo admite cambios por PR, sin push directo, forzado ni borrado, también para quien es propietario. La
+protección no vive en el código; para aplicarla o revisarla:
+
+```bash
+gh api -X PUT repos/leandroAmariles/quipux-playlist-infra/branches/main/protection \
+  --input .github/branch-protection.json
+gh api repos/leandroAmariles/quipux-playlist-infra/branches/main/protection
+```
