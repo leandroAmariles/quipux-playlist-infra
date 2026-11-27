@@ -11,7 +11,7 @@ services:
       retries: 5
 
   kafka:
-    image: apache/kafka-native:4.0.0
+    image: apache/kafka-native:4.3.1
     environment:
       - KAFKA_NODE_ID=1
       - KAFKA_PROCESS_ROLES=broker,controller
