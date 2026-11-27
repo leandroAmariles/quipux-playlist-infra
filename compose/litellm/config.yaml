@@ -1,21 +1,7 @@
-# Pasarela de modelos. El backend solo conoce los alias.
-model_list:
-  - model_name: recomendador-chat
-    litellm_params:
-      model: os.environ/LITELLM_CHAT_MODEL
-      api_base: http://ollama:11434
-      keep_alive: -1
-      # Por encima del tiempo máximo del backend, que es quien corta la llamada.
-      timeout: 120
-  - model_name: recomendador-embeddings
-    litellm_params:
-      model: os.environ/LITELLM_EMBEDDING_MODEL
-      api_base: http://ollama:11434
-      timeout: 120
-      # El SDK del backend siempre lo envía y Ollama no lo admite: sin esto, todo embedding falla con 400.
-      additional_drop_params: ["encoding_format"]
-    model_info:
-      mode: embedding
+# Pasarela de modelos. LiteLLM no combina secciones: lo que defina models.yaml sustituye a lo de aquí,
+# así que los ajustes de litellm_settings viven en este archivo y en config.langfuse.yaml.
+include:
+  - models.yaml
 
 litellm_settings:
   # Sin reintentos: una petición del backend es una petición al modelo.
@@ -23,11 +9,3 @@ litellm_settings:
   request_timeout: 120
   turn_off_message_logging: true
   telemetry: false
-
-router_settings:
-  num_retries: 0
-  # El cortacircuitos está en el backend.
-  disable_cooldowns: true
-
-general_settings:
-  master_key: os.environ/LITELLM_MASTER_KEY

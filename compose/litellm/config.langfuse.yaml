@@ -1,0 +1,12 @@
+# La misma pasarela, con el envío de trazas a Langfuse. Solo la usa compose.langfuse.yaml.
+include:
+  - models.yaml
+
+litellm_settings:
+  # Sin reintentos: una petición del backend es una petición al modelo.
+  num_retries: 0
+  request_timeout: 120
+  turn_off_message_logging: true
+  telemetry: false
+  # Una sola vía de trazas: una por cada llamada de chat.
+  callbacks: ["langfuse_otel"]
