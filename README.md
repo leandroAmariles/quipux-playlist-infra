@@ -140,6 +140,9 @@ $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create
 Add-Content .env ("AI_API_KEY=sk-" + [BitConverter]::ToString($b).Replace('-', '').ToLower())
 ```
 
+La configuración de la pasarela está en `compose/litellm/`: los modelos en `models.yaml`, incluido por `config.yaml`
+y por `config.langfuse.yaml`.
+
 En desarrollo local esta clave es la clave maestra de LiteLLM. Fuera de tu equipo haría falta una clave virtual con
 límites, que requiere una base de datos en LiteLLM y no está incluida.
 
@@ -222,6 +225,55 @@ docker run --rm ghcr.io/sigstore/cosign/cosign:v3.1.6 verify \
 La versión usada (`1.111.0`) tiene un aviso de terceros sin parche, ZDI-26-1031, que el proveedor discute y requiere
 ser administrador de la pasarela. Se acepta porque LiteLLM solo escucha en `127.0.0.1` y la clave no está en el
 repositorio. Ollama no publica puertos y tiene desactivadas sus funciones en la nube.
+
+## Prompts y trazas (Langfuse)
+
+Un cuarto archivo levanta [Langfuse](https://langfuse.com) autoalojado y envía una traza por cada llamada al modelo
+de chat. Es opcional y pesado: úsalo solo cuando haga falta.
+
+```bash
+docker compose -f compose.yaml -f compose.ai.yaml -f compose.langfuse.yaml up -d --build
+```
+
+Añade a `.env`, con valores aleatorios propios:
+
+| Variable | Formato |
+|---|---|
+| `LANGFUSE_PUBLIC_KEY` | `pk-lf-…` |
+| `LANGFUSE_SECRET_KEY` | `sk-lf-…` |
+| `LANGFUSE_DB_PASSWORD` | solo letras y números (`openssl rand -hex 24`); la usan sus cuatro almacenes |
+| `LANGFUSE_SALT`, `LANGFUSE_NEXTAUTH_SECRET` | `openssl rand -hex 32` |
+| `LANGFUSE_ENCRYPTION_KEY` | 64 hexadecimales (`openssl rand -hex 32`) |
+| `LANGFUSE_USER_PASSWORD` | contraseña para entrar; al menos 8 caracteres, con letra, número y símbolo |
+
+Opcionales: `LANGFUSE_PORT` (3000) y `LANGFUSE_USER_EMAIL` (`admin@example.com`).
+
+- La web queda en `http://localhost:3000`, solo en `127.0.0.1`; los almacenes no publican puertos.
+- El proyecto, las claves y el usuario se crean con el volumen vacío; cambiarlos después no los actualiza.
+- El prompt se publica desde el backend: `python tools/langfuse/publish_prompt.py`.
+- Con Langfuse detenido, la API y la pasarela siguen funcionando.
+- No incluye el AI Gateway de Langfuse: la pasarela de modelos es LiteLLM.
+- Las trazas se quedan en tu equipo, sin el texto de los mensajes. `down -v` las borra; no hay retención automática.
+
+La memoria necesaria está en [Memoria medida](#memoria-medida-con-langfuse).
+
+### Memoria medida con Langfuse
+
+Medida el 2026-11-27, recién arrancado y casi sin uso:
+
+| Contenedor | Memoria |
+|---|---|
+| `langfuse-web` | 759 MiB |
+| `langfuse-worker` | 715 MiB |
+| `langfuse-clickhouse` | 296 MiB |
+| `langfuse-postgres`, `langfuse-minio`, `langfuse-redis` | 212 MiB |
+| **Langfuse, total** | **unos 2 GiB** |
+| Resto de la pila (`litellm`, `ollama` con GPU, `api`, `catalog-db`) | unos 3 GiB |
+
+Es una medida en reposo; con carga sube (`langfuse-web` llegó a 1,4 GiB y `ollama` a 3,3 GiB). No se amplió la memoria de Docker (`.wslconfig`). Ese mismo día, con esta
+pila, otra del proyecto, un clúster local y el IDE abiertos, un equipo de 31 GB se quedó sin memoria libre y el motor
+de Docker dejó de responder: no levantes Langfuse junto a otras pilas. Para soltarlo: `docker compose -f compose.yaml
+-f compose.ai.yaml -f compose.langfuse.yaml down` (sin `-v`, que borraría las trazas).
 
 ## Variables opcionales
 

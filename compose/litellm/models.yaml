@@ -1,0 +1,28 @@
+# Modelos y claves de la pasarela, comunes a config.yaml y config.langfuse.yaml. El backend solo conoce los alias.
+model_list:
+  - model_name: recomendador-chat
+    litellm_params:
+      model: os.environ/LITELLM_CHAT_MODEL
+      api_base: http://ollama:11434
+      keep_alive: -1
+      # Por encima del tiempo máximo del backend, que es quien corta la llamada.
+      timeout: 120
+  - model_name: recomendador-embeddings
+    litellm_params:
+      model: os.environ/LITELLM_EMBEDDING_MODEL
+      api_base: http://ollama:11434
+      timeout: 120
+      # El SDK del backend siempre lo envía y Ollama no lo admite: sin esto, todo embedding falla con 400.
+      additional_drop_params: ["encoding_format"]
+      # Con Langfuse activo solo dejan traza las llamadas de chat.
+      no-log: true
+    model_info:
+      mode: embedding
+
+router_settings:
+  num_retries: 0
+  # El cortacircuitos está en el backend.
+  disable_cooldowns: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

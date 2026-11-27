@@ -60,7 +60,7 @@ services:
       # Usa la tabla de precios incluida en la imagen en lugar de descargarla al arrancar.
       - LITELLM_LOCAL_MODEL_COST_MAP=True
     volumes:
-      - ./litellm/config.yaml:/etc/litellm/config.yaml:ro
+      - ./litellm:/etc/litellm:ro
     ports:
       - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
     depends_on:
