@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.5.1...v0.6.0) (2026-11-27)
+
+
+### Features
+
+* **HU-15:** bring up the local cluster and its AI services with make up ([f170a82](https://github.com/leandroAmariles/quipux-playlist-infra/commit/f170a823359712527b052624cd3205eb27ba6e3a))
+* **HU-15:** bring up the local cluster with Terraform and make up ([ece5c4a](https://github.com/leandroAmariles/quipux-playlist-infra/commit/ece5c4a385375ec0ad6ce5ea573670f4b80870db))
+
 ## [0.5.1](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.5.0...v0.5.1) (2026-11-27)
 
 
