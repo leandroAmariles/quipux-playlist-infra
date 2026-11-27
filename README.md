@@ -7,18 +7,264 @@ La documentación del proyecto está en [quipux-playlist-backend](https://github
 Las especificaciones de infraestructura están en [`specs/07-docker-compose/`](specs/07-docker-compose/) y
 [`specs/09-kubernetes-argocd/`](specs/09-kubernetes-argocd/).
 
-## Requisitos
+## Cómo levantarlo en local
 
-- Git
-- Docker con Compose, con el motor en marcha
-- Acceso a internet la primera vez, para descargar las imágenes base y las dependencias
+| | [Clúster Kubernetes](#clúster-local-con-kubernetes-kind) | [Docker Compose](#docker-compose) |
+|---|---|---|
+| Imágenes de la API y la web | las publicadas en GHCR (no compila tu código) | se construyen desde tu código |
+| Repositorios necesarios | solo este | los tres |
+| Herramientas | Git, Docker, `kind` y `kubectl` | Git y Docker con Compose |
+| IA local, WireMock y Langfuse | no incluidos | opcionales |
 
-No hace falta instalar Java, Maven ni Node.
+Las dos opciones usan los puertos `4200` y `8080`: detén una antes de arrancar la otra. En ninguna hace falta instalar
+Java, Maven ni Node, y las dos necesitan internet la primera vez.
 
-## Carpetas
+## Clúster local con Kubernetes (kind)
 
-La composición construye las imágenes desde el código y levanta además una instancia efímera de **Redis** (caché de géneros) y otra de **Kafka** en modo KRaft sin ZooKeeper (eventos `PlaylistCreated` y `PlaylistDeleted` de auditoría) en red interna: si Redis o Kafka fallan o se detienen, `api` sigue arrancando y respondiendo con normalidad.
-Los tres repositorios van como carpetas hermanas y con sus nombres originales:
+Levanta en un clúster [kind](https://kind.sigs.k8s.io) la web, la API, Redis y Kafka. Todos los comandos se ejecutan
+desde la raíz de este repositorio. Donde Bash y PowerShell difieren se muestran los dos; el resto sirve en ambos.
+
+### 1. Instalar las herramientas
+
+- Docker en marcha. El nodo del clúster ocupó 1,7 GiB en reposo, con Argo CD instalado; deja al menos 4 GB libres para
+  Docker.
+- [`kind`](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) y
+  [`kubectl`](https://kubernetes.io/docs/tasks/tools/). No hace falta instalar `kustomize`: `kubectl` lo incluye.
+
+```powershell
+# Windows
+winget install -e --id Kubernetes.kind
+winget install -e --id Kubernetes.kubectl
+```
+
+```bash
+# macOS
+brew install kind kubectl
+```
+
+Abre una terminal nueva después de instalar. Probado en Windows 11 con Docker 29.6, `kind` 0.31 y `kubectl` 1.34. Las
+imágenes del proyecto solo se publican para `linux/amd64`.
+
+### 2. Clonar y crear el clúster
+
+```bash
+git clone https://github.com/leandroAmariles/quipux-playlist-infra.git
+cd quipux-playlist-infra
+
+kind create cluster --name quipux-playlist
+kubectl config use-context kind-quipux-playlist
+kubectl apply -f k8s/namespace.yaml
+```
+
+Si tienes otros clústeres, comprueba con `kubectl config current-context` que sigues en `kind-quipux-playlist` antes
+de aplicar o borrar nada.
+
+### 3. Crear el `Secret`
+
+No hay secretos reales en el repositorio: crea `playlist-secrets` una vez, con las claves de
+[`k8s/secret.example.yaml`](k8s/secret.example.yaml). `JWT_SECRET` necesita 32 bytes como mínimo y cada contraseña, de
+1 a 72.
+
+Bash o Git Bash:
+
+```bash
+USER_PASS='<elige-una-contraseña>'
+ADMIN_PASS='<elige-otra-contraseña>'
+
+kubectl -n quipux-playlist create secret generic playlist-secrets \
+  --from-literal=JWT_SECRET="$(openssl rand -base64 48)" \
+  --from-literal=DEMO_USER_PASSWORD="$USER_PASS" \
+  --from-literal=DEMO_ADMIN_PASSWORD="$ADMIN_PASS"
+```
+
+PowerShell:
+
+```powershell
+$userPass = '<elige-una-contraseña>'
+$adminPass = '<elige-otra-contraseña>'
+$bytes = New-Object byte[] 48
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+$jwt = [Convert]::ToBase64String($bytes)
+
+kubectl -n quipux-playlist create secret generic playlist-secrets `
+  --from-literal=JWT_SECRET="$jwt" `
+  --from-literal=DEMO_USER_PASSWORD="$userPass" `
+  --from-literal=DEMO_ADMIN_PASSWORD="$adminPass"
+```
+
+Las credenciales de Spotify son opcionales: si las tienes, añade al mismo comando
+`--from-literal=SPOTIFY_CLIENT_ID=...` y `--from-literal=SPOTIFY_CLIENT_SECRET=...`.
+
+### 4. Desplegar
+
+```bash
+kubectl apply -k k8s
+kubectl -n quipux-playlist wait --for=condition=Available deployment --all --timeout=300s
+kubectl -n quipux-playlist get pods
+```
+
+Deben quedar `api`, `kafka`, `redis` y `web` en `1/1 Running`. La primera vez se descargan las imágenes; en la prueba
+tardó alrededor de un minuto. Los avisos `FailedScheduling` o `Startup probe failed` de ese primer minuto son
+normales.
+
+### 5. Abrir la aplicación
+
+Cada `port-forward` ocupa su terminal; déjalas abiertas y cierra con `Ctrl+C`.
+
+```bash
+# Terminal 1: web
+kubectl -n quipux-playlist port-forward svc/web 4200:8080
+```
+
+```bash
+# Terminal 2: API (solo si quieres usarla directamente, Swagger o Postman)
+kubectl -n quipux-playlist port-forward svc/api 8080:8080
+```
+
+| Qué | Dirección |
+|---|---|
+| Aplicación web | <http://localhost:4200> |
+| API a través de la web | <http://localhost:4200/api> |
+| API | <http://localhost:8080> |
+| Swagger UI | <http://localhost:8080/swagger-ui.html> |
+| Sondas sin token | <http://localhost:8080/actuator/health/readiness> y `/liveness` (`/actuator/health` pide token) |
+
+Entra con `admin` (consulta, crea y borra) o con `user` (solo consulta) y la contraseña que elegiste.
+
+### 6. Comprobar que funciona
+
+Desde una tercera terminal, con la web reenviada. Si la terminal es nueva, vuelve a definir la contraseña.
+
+Bash o Git Bash:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:4200/api/auth/login -H 'Content-Type: application/json' \
+  -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASS\"}" | sed 's/.*"accessToken":"\([^"]*\)".*/\1/')
+
+curl -i -X POST http://localhost:4200/api/lists -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"nombre":"Demo","descripcion":"Prueba","canciones":[{"titulo":"Uno","anno":"1999","genero":"rock"}]}'
+
+curl -i http://localhost:4200/api/lists/Demo -H "Authorization: Bearer $TOKEN"
+
+kubectl -n quipux-playlist logs deployment/api | grep "Playlist audit event"
+```
+
+PowerShell:
+
+```powershell
+$credentials = @{ username = 'admin'; password = $adminPass } | ConvertTo-Json
+$login = Invoke-RestMethod -Method Post -Uri http://localhost:4200/api/auth/login `
+  -ContentType 'application/json' -Body $credentials
+$headers = @{ Authorization = "Bearer $($login.accessToken)" }
+
+$song = @{ titulo = 'Uno'; anno = '1999'; genero = 'rock' }
+$list = @{ nombre = 'Demo'; descripcion = 'Prueba'; canciones = @($song) } | ConvertTo-Json -Depth 4
+Invoke-RestMethod -Method Post -Uri http://localhost:4200/api/lists -Headers $headers `
+  -ContentType 'application/json' -Body $list
+
+Invoke-RestMethod -Uri http://localhost:4200/api/lists/Demo -Headers $headers
+
+kubectl -n quipux-playlist logs deployment/api | Select-String 'Playlist audit event'
+```
+
+La creación responde `201` y el registro muestra el evento `PlaylistCreated`, que confirma el paso por Kafka. Repetir la
+creación responde `409` porque la lista ya existe.
+
+Dos respuestas esperadas en este clúster:
+
+- Las recomendaciones responden con `origen: RESPALDO`: no incluye los servicios de IA.
+- Sin credenciales de Spotify los géneros salen de la lista local y Redis queda vacío, porque solo guarda los de
+  Spotify.
+
+### Uso diario
+
+| Para | Comando |
+|---|---|
+| Ver el estado | `kubectl -n quipux-playlist get pods` |
+| Seguir los registros de la API | `kubectl -n quipux-playlist logs -f deployment/api` |
+| Volver tras reiniciar Docker o el equipo | `docker start quipux-playlist-control-plane`, esperar a que los pods vuelvan a `1/1` y repetir los `port-forward` |
+| Aplicar cambios de los manifiestos | `kubectl apply -k k8s` |
+| Reiniciar la API | `kubectl -n quipux-playlist rollout restart deployment/api` |
+| Cambiar el secreto | `kubectl -n quipux-playlist delete secret playlist-secrets`, crearlo de nuevo y reiniciar la API |
+| Borrar el clúster | `kind delete cluster --name quipux-playlist` |
+
+La base de datos está en memoria: las listas se pierden cada vez que se reinicia la API.
+
+### Si algo falla en el clúster
+
+| Síntoma | Causa y solución |
+|---|---|
+| `node(s) already exist for a cluster with the name` | el clúster ya existe: sigue desde `kubectl config use-context`, o bórralo |
+| `secrets "playlist-secrets" already exists` | ya está creado; para cambiarlo, mira «Uso diario» |
+| `api` en `CreateContainerConfigError` | falta `playlist-secrets`; créalo y el pod arranca solo |
+| `api` en `CrashLoopBackOff` | un valor no es válido; `kubectl -n quipux-playlist logs deployment/api --previous` dice cuál |
+| Pod en `ImagePullBackOff` | sin acceso a la imagen; `kubectl -n quipux-playlist describe pod <pod>` muestra el motivo |
+| `unable to listen on port` | puerto ocupado; usa otro a la izquierda, por ejemplo `14200:8080` |
+| El `port-forward` deja de responder | el pod se reinició; vuelve a lanzarlo |
+| `connection refused` en cualquier `kubectl` | Docker o el nodo están detenidos; mira «Uso diario» |
+
+## Despliegue continuo con Argo CD
+
+En lugar de desplegar desde GitHub Actions (sin `kubeconfig` ni credenciales de clúster en los workflows), Argo CD
+observa la rama `main` de este repositorio mediante [`argocd/application.yaml`](argocd/application.yaml) (`path: k8s`,
+`prune: true`, `selfHeal: true`) sin tocar `playlist-secrets`, al estar excluido de `kustomization.yaml`.
+
+Para usar la aplicación en local es opcional. Necesita el clúster y el `Secret` de los pasos 2 y 3. Despliega lo que hay
+en la rama `main` en GitHub, no tus archivos locales, y deshace los cambios hechos a mano sobre esos recursos: no lo
+instales si vas a probar manifiestos sin fusionar. Si usas un fork, cambia `repoURL` en ese mismo archivo.
+
+### Instalación y aplicación
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.9/manifests/install.yaml
+kubectl -n argocd rollout status deployment/argocd-server --timeout=180s
+kubectl apply -f argocd/application.yaml
+kubectl -n argocd wait --for=jsonpath='{.status.sync.status}'=Synced application/quipux-playlist --timeout=300s
+kubectl -n argocd get application quipux-playlist
+```
+
+En PowerShell cambia la `\` del final de línea por una comilla invertida o escribe el comando en una sola línea.
+
+### Acceso a la consola de Argo CD
+
+Contraseña inicial en Bash o Git Bash:
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+```
+
+En PowerShell:
+
+```powershell
+$encoded = kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}"
+[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))
+```
+
+Después abre el acceso:
+
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8443:443
+```
+
+Abre <https://localhost:8443> con el usuario `admin` y la contraseña anterior.
+
+### Flujo automático tras una release
+
+1. Al publicar una nueva versión en `quipux-playlist-backend` o `quipux-playlist-frontend`, su workflow `Release`
+   ejecuta el trabajo `update-infra` (solo si la imagen se publicó en GHCR).
+2. `update-infra` abre o actualiza automáticamente un PR `chore(deploy): bump <componente> image to X.Y.Z` modificando
+   únicamente [`k8s/kustomization.yaml`](k8s/kustomization.yaml).
+3. El CI de este repositorio valida el PR y, al fusionarlo en `main`, Argo CD sincroniza la nueva etiqueta en el clúster.
+
+## Docker Compose
+
+Construye las imágenes desde el código y levanta además una instancia efímera de **Redis** (caché de géneros) y otra de
+**Kafka** en modo KRaft sin ZooKeeper (eventos `PlaylistCreated` y `PlaylistDeleted` de auditoría) en red interna: si
+Redis o Kafka fallan o se detienen, `api` sigue arrancando y respondiendo con normalidad.
+
+Los tres repositorios van como carpetas hermanas y con sus nombres originales. Si ya clonaste alguno, no lo repitas:
 
 ```bash
 git clone https://github.com/leandroAmariles/quipux-playlist-backend.git
@@ -27,9 +273,9 @@ git clone https://github.com/leandroAmariles/quipux-playlist-infra.git
 cd quipux-playlist-infra/compose
 ```
 
-Todos los comandos siguientes se ejecutan desde `quipux-playlist-infra/compose`.
+Los comandos de Docker Compose de las secciones siguientes se ejecutan desde `quipux-playlist-infra/compose`.
 
-## Preparación
+### Preparación
 
 Copia la plantilla (`cp .env.example .env`, o `Copy-Item .env.example .env` en PowerShell) y rellena en `.env` las tres
 variables obligatorias. No hay valores por defecto para que no haya secretos en el repositorio. `.env` no se versiona.
@@ -57,7 +303,7 @@ Si un valor contiene `$`, escríbelo entre comillas simples: `DEMO_USER_PASSWORD
 Las variables que ya estén definidas en tu terminal tienen prioridad sobre `.env`. Si antes arrancaste la API sin Docker,
 usa una terminal nueva.
 
-## Arrancar
+### Arrancar
 
 ```bash
 docker compose up
@@ -78,7 +324,7 @@ colección de Postman y sus instrucciones están en el repositorio de backend.
 Los puertos solo se abren en tu equipo (`127.0.0.1`). No hay HTTPS ni límite de intentos de inicio de sesión: la
 aplicación no debe exponerse en una red pública.
 
-## Otros comandos
+### Otros comandos
 
 | Para | Comando |
 |---|---|
@@ -299,7 +545,7 @@ de Docker dejó de responder: no levantes Langfuse junto a otras pilas. Para sol
 Escríbelas en `.env` solo si quieres cambiarlas: una variable vacía sustituye al valor por defecto. Con WireMock, las
 cuatro de credenciales y direcciones de Spotify quedan fijadas.
 
-## Si algo falla
+## Si algo falla con Docker Compose
 
 | Síntoma | Causa y solución |
 |---|---|
@@ -319,7 +565,7 @@ Cada release de backend y frontend publica su imagen en GHCR, con el número de 
 La composición de `compose/` no las usa: sigue construyendo desde el código. Los manifiestos de `k8s/` sí las
 descargan desde GHCR y fijan etiquetas explícitas mediante `kustomize`.
 
-## Kubernetes y Kustomize
+## Manifiestos de Kubernetes
 
 El directorio [`k8s/`](k8s/) define el despliegue endurecido en el namespace `quipux-playlist`:
 
@@ -338,85 +584,17 @@ El directorio [`k8s/`](k8s/) define el despliegue endurecido en el namespace `qu
 | [`k8s/web-service.yaml`](k8s/web-service.yaml) | `Service` (`web`) | Expone el puerto `8080` dentro del clúster |
 | [`k8s/kustomization.yaml`](k8s/kustomization.yaml) | `Kustomization` | Incluye los 10 manifiestos anteriores (sin `secret.example.yaml`) y las etiquetas explícitas de imagen |
 
-### Requisitos locales
+### Validar los manifiestos
 
-- Docker en marcha
-- `kind`, `kubectl` y `kustomize`
-- Opcional para comprobaciones locales: `trivy`
-
-### Crear el clúster local y el `Secret` real
-
-No existen secretos reales en el repositorio. Crea el clúster `kind`, el namespace y el `Secret` `playlist-secrets`
-manualmente siguiendo las claves de [`k8s/secret.example.yaml`](k8s/secret.example.yaml):
-
-```bash
-kind create cluster --name quipux-playlist
-kubectl apply -f k8s/namespace.yaml
-
-kubectl -n quipux-playlist create secret generic playlist-secrets \
-  --from-literal=JWT_SECRET="$(openssl rand -base64 48)" \
-  --from-literal=DEMO_USER_PASSWORD="<elige-una-contraseña>" \
-  --from-literal=DEMO_ADMIN_PASSWORD="<elige-otra-contraseña>" \
-  --from-literal=SPOTIFY_CLIENT_ID="" \
-  --from-literal=SPOTIFY_CLIENT_SECRET=""
-```
-
-Si `playlist-secrets` no existe, el pod `api` falla claramente con `CreateContainerConfigError` al arrancar hasta que se
-cree el secreto en el clúster.
-
-### Validar y aplicar manualmente con Kustomize
+Opcional, con [`kustomize`](https://kubectl.docs.kubernetes.io/installation/kustomize/) y
+[`trivy`](https://trivy.dev) instalados, en Bash o Git Bash:
 
 ```bash
 kustomize build k8s > /tmp/rendered-k8s.yaml
 trivy config --severity HIGH,CRITICAL --exit-code 1 /tmp/rendered-k8s.yaml
 trivy config --severity HIGH,CRITICAL --exit-code 1 argocd
 trivy fs --scanners secret --severity HIGH,CRITICAL --exit-code 1 .
-kustomize build k8s | kubectl apply -f -
 ```
-
-### Acceso local por `port-forward`
-
-```bash
-kubectl -n quipux-playlist port-forward svc/web 4200:8080
-kubectl -n quipux-playlist port-forward svc/api 8080:8080
-```
-
-- Aplicación web: <http://localhost:4200> (reenvía `/api` al `Service` interno `api.quipux-playlist.svc.cluster.local:8080`)
-- API: <http://localhost:8080>
-- Sondas sin token: <http://localhost:8080/actuator/health/liveness> y <http://localhost:8080/actuator/health/readiness> (`/actuator/health` sigue exigiendo autenticación)
-
-## Despliegue continuo con Argo CD
-
-En lugar de desplegar desde GitHub Actions (sin `kubeconfig` ni credenciales de clúster en los workflows), Argo CD
-observa la rama `main` de este repositorio mediante [`argocd/application.yaml`](argocd/application.yaml) (`path: k8s`,
-`prune: true`, `selfHeal: true`) sin tocar `playlist-secrets`, al estar excluido de `kustomization.yaml`.
-
-### Instalación y aplicación
-
-```bash
-kubectl create namespace argocd
-kubectl apply -n argocd --server-side --force-conflicts \
-  -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.9/manifests/install.yaml
-kubectl -n argocd rollout status deployment/argocd-server --timeout=180s
-kubectl apply -f argocd/application.yaml
-```
-
-### Acceso a la consola de Argo CD
-
-```bash
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
-kubectl -n argocd port-forward svc/argocd-server 8443:443
-```
-
-Abre <https://localhost:8443> con el usuario `admin` y la contraseña anterior.
-
-### Flujo automático tras una release
-
-1. Al publicar una nueva versión en `quipux-playlist-backend` o `quipux-playlist-frontend`, su workflow `Release`
-   ejecuta el trabajo `update-infra` (solo si la imagen se publicó en GHCR).
-2. `update-infra` abre o actualiza automáticamente un PR `chore(deploy): bump <componente> image to X.Y.Z` modificando
-   únicamente [`k8s/kustomization.yaml`](k8s/kustomization.yaml).
-3. El CI de este repositorio valida el PR y, al fusionarlo en `main`, Argo CD sincroniza la nueva etiqueta en el clúster.
 
 ## Integración continua, versiones y protección de `main`
 
@@ -426,7 +604,7 @@ de solo lectura (`contents: read`) y acciones de terceros fijadas por SHA:
 | Comprobación | Qué valida | En local |
 |---|---|---|
 | `kustomize` | `kustomize build k8s`, ausencia de `kind: Secret` y `replicas: 1` en `api` | `kustomize build k8s` |
-| `trivy` | `trivy config` sobre el renderizado de `k8s/` y `argocd/`, y `trivy fs --scanners secret` sobre el repositorio | comandos de arriba |
+| `trivy` | `trivy config` sobre el renderizado de `k8s/` y `argocd/`, y `trivy fs --scanners secret` sobre el repositorio | [Validar los manifiestos](#validar-los-manifiestos) |
 
 - **Dependabot** ([`dependabot.yml`](.github/dependabot.yml)): revisa semanalmente las imágenes de `docker-compose` y
   los SHA de `github-actions` con mensajes en formato Conventional Commits; todos sus PR pasan el CI antes de fusionarse.

@@ -223,12 +223,19 @@ El escenario 13 se cierra con T034 (backend y frontend) y T044 (infra).
 - [X] T041 [P] [US5] Crear `{infra}/.github/dependabot.yml` para `docker-compose` en `/compose`
 - [X] T042 [P] [US5] En `{infra}/README.md`: protección de `main`, Dependabot y ajustes manuales (FR-023), y enlace a
       las imágenes publicadas
-- [ ] T043 [US5] **(confirmar)** Commit y push de `{back}` y `{front}` y abrir el PR de Dependabot de cada uno
-- [ ] T044 [US5] **(confirmar)** Commit y push de `{infra}` (spec, `.github` y README) y abrir su PR; comprobar que se
+- [X] T043 [US5] **(confirmar)** Commit y push de `{back}` y `{front}` y abrir el PR de Dependabot de cada uno
+  - Resultado: `backend#12` (`cd3d69d`) y `frontend#7` (`4a178ad`) con `.github/dependabot.yml` validado y CI en verde.
+- [X] T044 [US5] **(confirmar)** Commit y push de `{infra}` (spec, `.github` y README) y abrir su PR; comprobar que se
       puede fusionar sin comprobaciones (escenario 13). **(persona)** Fusionar los tres PR
-- [ ] T045 [US5] Escenarios 14 y 9: sin errores en la pestaña de Dependabot, commits en Conventional Commits, un PR de
+  - Resultado: `infra#2` (`fcb3b1c`) abierto con `mergeStateStatus: CLEAN` sin comprobaciones obligatorias (escenario
+    13); los tres PRs (`backend#12`, `frontend#7`, `infra#2`) fusionados en `main`.
+- [X] T045 [US5] Escenarios 14 y 9: sin errores en la pestaña de Dependabot, commits en Conventional Commits, un PR de
       Dependabot con las comprobaciones en verde sin secretos y los SHA actualizados siguen siendo SHA. Si Dependabot no
       ha abierto un PR de acciones, anotar ese punto como pendiente
+  - Resultado: Dependabot activo sin errores en los tres repositorios. En frontend abrió `#8` (`fix(deps)`, Docker),
+    `#9` (`chore(deps-dev)`, grupo `eslint`) en verde sin secretos y `#10` (`chore(deps-dev)`, bloqueado por CI); en
+    backend abrió `#14`–`#17` (`fix(deps)`, Docker y Maven) ejecutando CI sin secretos. Pendiente verificar actualización
+    de SHA en un PR de `github-actions` (sin versión nueva disponible aún para las acciones fijadas).
 
 **Checkpoint**: las cinco historias funcionan.
 
@@ -248,8 +255,11 @@ El escenario 13 se cierra con T034 (backend y frontend) y T044 (infra).
       release-please
   - Resultado: Marcados los 14 criterios de HU-08 en `docs/backlog.md` y añadidas concreciones + pendiente de rotación de
     `RELEASE_PLEASE_TOKEN` en `docs/adr/0001-arquitectura-api-listas-reproduccion.md`.
-- [ ] T049 **(confirmar)** Commit `docs(HU-08)` y PR de `{back}`; **(persona)** fusionarlo y comprobar que `release.yml`
+- [X] T049 **(confirmar)** Commit `docs(HU-08)` y PR de `{back}`; **(persona)** fusionarlo y comprobar que `release.yml`
       no ejecuta `publish` (escenario 18)
+  - Resultado: `docs(HU-08)` fusionado en `backend#12` (`cd3d69d`); `Release` run `45958331283` ejecutó
+    `release-please` (`success`) y omitió `publish` (`skipped`, escenario 18). Igual en frontend tras `#7` (run
+    `45958132492`, `publish: skipped`).
 - [X] T050 Buscar comentarios de revisión en los archivos tocados y, si hay, registrarlos en `{spec}/code-review.md`;
       entregar la lista de secretos y propiedades nuevas, sin valores reales. No se genera `requests.http`: no cambia
       ningún endpoint
