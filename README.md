@@ -17,8 +17,7 @@ No hace falta instalar Java, Maven ni Node.
 
 ## Carpetas
 
-La composición construye las imágenes desde el código y levanta además una instancia efímera de **Redis** en red interna
-para cachear los géneros de Spotify (si Redis falla o se detiene, `api` sigue arrancando y respondiendo con normalidad).
+La composición construye las imágenes desde el código y levanta además una instancia efímera de **Redis** (caché de géneros) y otra de **Kafka** en modo KRaft sin ZooKeeper (eventos `PlaylistCreated` y `PlaylistDeleted` de auditoría) en red interna: si Redis o Kafka fallan o se detienen, `api` sigue arrancando y respondiendo con normalidad.
 Los tres repositorios van como carpetas hermanas y con sus nombres originales:
 
 ```bash
@@ -292,6 +291,10 @@ de Docker dejó de responder: no levantes Langfuse junto a otras pilas. Para sol
 | `GENRES_CACHE_ENABLED` | `true` | activa o desactiva la caché de géneros en Redis |
 | `GENRES_CACHE_TTL` | `24h` | vigencia de la caché de géneros |
 | `GENRES_CACHE_TIMEOUT` | `1s` | tiempo máximo por operación en Redis |
+| `PLAYLIST_EVENTS_ENABLED` | `true` | activa o desactiva los eventos de auditoría en Kafka |
+| `PLAYLIST_EVENTS_TOPIC` | `playlist.events` | tópico de Kafka para `PlaylistCreated` y `PlaylistDeleted` |
+| `PLAYLIST_EVENTS_CONSUMER_GROUP` | `playlist-audit` | grupo consumidor de auditoría |
+| `PLAYLIST_EVENTS_PUBLISH_TIMEOUT` | `2s` | tiempo máximo por publicación hacia Kafka |
 
 Escríbelas en `.env` solo si quieres cambiarlas: una variable vacía sustituye al valor por defecto. Con WireMock, las
 cuatro de credenciales y direcciones de Spotify quedan fijadas.
@@ -323,15 +326,17 @@ El directorio [`k8s/`](k8s/) define el despliegue endurecido en el namespace `qu
 | Archivo | Recurso | Detalle principal |
 |---|---|---|
 | [`k8s/namespace.yaml`](k8s/namespace.yaml) | `Namespace` | Aísla los recursos en `quipux-playlist` |
-| [`k8s/configmap.yaml`](k8s/configmap.yaml) | `ConfigMap` (`playlist-config`) | `JWT_TTL`, URLs y timeout de Spotify, `REDIS_HOST`/`REDIS_PORT`, `GENRES_CACHE_*` y `API_URL=http://api.quipux-playlist.svc.cluster.local:8080` |
+| [`k8s/configmap.yaml`](k8s/configmap.yaml) | `ConfigMap` (`playlist-config`) | `JWT_TTL`, URLs y timeout de Spotify, `REDIS_HOST`/`REDIS_PORT`, `GENRES_CACHE_*`, `KAFKA_BOOTSTRAP_SERVERS`, `PLAYLIST_EVENTS_*` y `API_URL=http://api.quipux-playlist.svc.cluster.local:8080` |
 | [`k8s/secret.example.yaml`](k8s/secret.example.yaml) | `Secret` de ejemplo | Plantilla vacía **excluida** de `kustomization.yaml` para evitar secretos reales en Git |
 | [`k8s/api-deployment.yaml`](k8s/api-deployment.yaml) | `Deployment` (`api`) | `replicas: 1` (H2 en memoria), UID `10001`, `readOnlyRootFilesystem: true`, `emptyDir` en `/tmp`, sondas Actuator `/actuator/health/liveness` y `/readiness` sin token |
 | [`k8s/api-service.yaml`](k8s/api-service.yaml) | `Service` (`api`) | Expone el puerto `8080` dentro del clúster |
 | [`k8s/redis-deployment.yaml`](k8s/redis-deployment.yaml) | `Deployment` (`redis`) | Caché efímera (`--save "" --appendonly no --dir /tmp`), UID `999`, `readOnlyRootFilesystem: true`, `emptyDir` en `/tmp`, sondas `redis-cli ping` |
 | [`k8s/redis-service.yaml`](k8s/redis-service.yaml) | `Service` (`redis`) | Expone el puerto `6379` (`ClusterIP`) dentro del clúster |
+| [`k8s/kafka-deployment.yaml`](k8s/kafka-deployment.yaml) | `Deployment` (`kafka`) | Broker único efímero en modo KRaft (`apache/kafka-native:4.0.0`), UID `1000`, `readOnlyRootFilesystem: true`, `emptyDir` en datos/logs/config/tmp, sondas TCP `:9092` |
+| [`k8s/kafka-service.yaml`](k8s/kafka-service.yaml) | `Service` (`kafka`) | Expone el puerto `9092` (`ClusterIP`) dentro del clúster |
 | [`k8s/web-deployment.yaml`](k8s/web-deployment.yaml) | `Deployment` (`web`) | UID `101`, `readOnlyRootFilesystem: true`, `emptyDir` en `/etc/nginx/conf.d`, `/var/cache/nginx` y `/tmp`, sondas HTTP `GET /` |
 | [`k8s/web-service.yaml`](k8s/web-service.yaml) | `Service` (`web`) | Expone el puerto `8080` dentro del clúster |
-| [`k8s/kustomization.yaml`](k8s/kustomization.yaml) | `Kustomization` | Incluye los 8 manifiestos anteriores (sin `secret.example.yaml`) y las etiquetas explícitas de imagen |
+| [`k8s/kustomization.yaml`](k8s/kustomization.yaml) | `Kustomization` | Incluye los 10 manifiestos anteriores (sin `secret.example.yaml`) y las etiquetas explícitas de imagen |
 
 ### Requisitos locales
 
