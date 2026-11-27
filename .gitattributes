@@ -1,0 +1,7 @@
+# Los scripts, el Makefile y la definición de la infraestructura se usan con finales de línea LF en cualquier equipo.
+Makefile text eol=lf
+*.sh     text eol=lf
+*.tf     text eol=lf
+*.hcl    text eol=lf
+*.yaml   text eol=lf
+*.yml    text eol=lf

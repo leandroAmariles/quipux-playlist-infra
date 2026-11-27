@@ -1,0 +1,55 @@
+# IA para el clúster local. La usa `make up`; no se combina con compose.yaml:
+#   docker compose -p quipux-cluster --env-file ../.local/compose.env -f compose.cluster.yaml up -d
+# Los servicios son los de compose.ai.yaml. Aquí solo cambia cómo se conectan: sin puertos en el equipo, y la
+# pasarela y el catálogo visibles para los pods en la red `kind`.
+name: quipux-cluster
+
+services:
+  ollama:
+    extends:
+      file: compose.ai.yaml
+      service: ollama
+
+  ollama-init:
+    extends:
+      file: compose.ai.yaml
+      service: ollama-init
+
+  litellm:
+    extends:
+      file: compose.ai.yaml
+      service: litellm
+    ports: !reset []
+    networks:
+      default: {}
+      kind:
+        aliases:
+          - quipux-litellm
+
+  catalog-db:
+    extends:
+      file: compose.ai.yaml
+      service: catalog-db
+    ports: !reset []
+    networks:
+      default: {}
+      kind:
+        aliases:
+          - quipux-catalog-db
+
+  # Indexa con la imagen publicada de la versión que despliega Kubernetes: no necesita el repositorio de backend.
+  catalog-index:
+    extends:
+      file: compose.ai.yaml
+      service: catalog-index
+    build: !reset null
+    image: ghcr.io/leandroamariles/quipux-playlist-backend:${BACKEND_TAG:?lo escribe make up en .local/compose.env}
+
+networks:
+  # La crea kind al crear el clúster.
+  kind:
+    external: true
+
+volumes:
+  ollama-models:
+  catalog-data:

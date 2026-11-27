@@ -3,6 +3,7 @@
     "strict": false,
     "contexts": [
       "kustomize",
+      "terraform",
       "trivy"
     ]
   },

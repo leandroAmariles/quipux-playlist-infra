@@ -6,3 +6,12 @@
 .vscode/
 *.log
 specs/*/.token-usage.json
+
+# make up: Terraform y archivos locales con secretos
+.local/
+terraform/local.tfvars
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash*.log

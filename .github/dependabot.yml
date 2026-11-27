@@ -7,6 +7,16 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+  - package-ecosystem: terraform
+    directories:
+      - /terraform/config
+      - /terraform/cluster
+      - /terraform/app
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
   - package-ecosystem: github-actions
     directory: /
     schedule:
