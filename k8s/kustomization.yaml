@@ -8,6 +8,7 @@ resources:
   - api-service.yaml
   - web-deployment.yaml
   - web-service.yaml
+  - nonexistent-resource.yaml
 images:
   - name: ghcr.io/leandroamariles/quipux-playlist-backend
     newTag: "0.2.0"
