@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.4.0...v0.5.0) (2026-11-27)
+
+
+### Features
+
+* **HU-14:** add self-hosted Langfuse to the AI composition ([93dae21](https://github.com/leandroAmariles/quipux-playlist-infra/commit/93dae2101304f3c1544722acdd4119836f5f4609))
+* **HU-14:** add self-hosted Langfuse to the AI composition ([6b48c61](https://github.com/leandroAmariles/quipux-playlist-infra/commit/6b48c61368a208195f7130044389324b7488141c))
+
+
+### Bug Fixes
+
+* **HU-11:** check the Kafka port in the Compose healthcheck ([ecf6f55](https://github.com/leandroAmariles/quipux-playlist-infra/commit/ecf6f5590613c392606d5447d7a79642387e8e60))
+* **HU-11:** let Kafka write its configuration in Kubernetes ([a2be24f](https://github.com/leandroAmariles/quipux-playlist-infra/commit/a2be24f6dadf0952ddaf8cdd83c71fe90c35a7c9))
+* **HU-11:** make the Kafka service start and report health correctly ([f92f875](https://github.com/leandroAmariles/quipux-playlist-infra/commit/f92f875eddec4f4888b863f16188c39cf687e83d))
+
 ## [0.4.0](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.3.0...v0.4.0) (2026-11-27)
 
 
