@@ -13,3 +13,8 @@ data:
   GENRES_CACHE_ENABLED: "true"
   GENRES_CACHE_TTL: "24h"
   GENRES_CACHE_TIMEOUT: "1s"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka.quipux-playlist.svc.cluster.local:9092"
+  PLAYLIST_EVENTS_ENABLED: "true"
+  PLAYLIST_EVENTS_TOPIC: "playlist.events"
+  PLAYLIST_EVENTS_CONSUMER_GROUP: "playlist-audit"
+  PLAYLIST_EVENTS_PUBLISH_TIMEOUT: "2s"
