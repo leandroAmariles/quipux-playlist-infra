@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.3.0...v0.4.0) (2026-11-27)
+
+
+### Features
+
+* **HU-11:** add Kafka KRaft service to Docker Compose and Kubernetes ([6955146](https://github.com/leandroAmariles/quipux-playlist-infra/commit/6955146e36109fe34ebd52a2be964d8879614005))
+* **HU-11:** add Kafka KRaft service to Docker Compose and Kubernetes ([6c71a13](https://github.com/leandroAmariles/quipux-playlist-infra/commit/6c71a135a791798ce84f35d1cf1aa32bd34ae457))
+
 ## [0.3.0](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.2.0...v0.3.0) (2026-11-27)
 
 
