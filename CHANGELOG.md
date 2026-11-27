@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.2.0...v0.3.0) (2026-11-27)
+
+
+### Features
+
+* **HU-13:** pgvector and catalog indexing in the AI composition ([0863613](https://github.com/leandroAmariles/quipux-playlist-infra/commit/0863613592607d9507263a6f7351be4ac8483d9c))
+
 ## [0.2.0](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.1.0...v0.2.0) (2026-11-27)
 
 
