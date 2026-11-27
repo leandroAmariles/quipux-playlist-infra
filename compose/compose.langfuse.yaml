@@ -123,7 +123,7 @@ services:
       retries: 20
 
   langfuse-minio:
-    image: cgr.dev/chainguard/minio@sha256:fb893e36fc369d41e92f678b17ec27378fa5bf0576aeef7ac15460c13629ab5a
+    image: cgr.dev/chainguard/minio@sha256:b288eaa709ba2f799a39e9a8ceda71a08fabf90109b12c90badba9afff29485c
     entrypoint: ["sh", "-c"]
     # Crea el bucket antes de arrancar.
     command: ["mkdir -p /data/langfuse && minio server --address ':9000' --console-address ':9001' /data"]
