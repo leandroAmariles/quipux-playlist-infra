@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.5.0...v0.5.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* **compose:** keep idle LiteLLM connections open longer than the client ([d1be666](https://github.com/leandroAmariles/quipux-playlist-infra/commit/d1be6668e7acb8bcd0dfdc54fc5c77adfb5e2cd3))
+* **compose:** keep idle LiteLLM connections open longer than the client ([dbf8f95](https://github.com/leandroAmariles/quipux-playlist-infra/commit/dbf8f956c259a50911f00cea2ade8a37b8e48f58))
+
 ## [0.5.0](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.4.0...v0.5.0) (2026-11-27)
 
 
