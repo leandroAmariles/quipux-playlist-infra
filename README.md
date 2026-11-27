@@ -17,8 +17,9 @@ No hace falta instalar Java, Maven ni Node.
 
 ## Carpetas
 
-La composición construye las imágenes desde el código, así que los tres repositorios van como carpetas hermanas y con
-sus nombres originales:
+La composición construye las imágenes desde el código y levanta además una instancia efímera de **Redis** en red interna
+para cachear los géneros de Spotify (si Redis falla o se detiene, `api` sigue arrancando y respondiendo con normalidad).
+Los tres repositorios van como carpetas hermanas y con sus nombres originales:
 
 ```bash
 git clone https://github.com/leandroAmariles/quipux-playlist-backend.git
@@ -215,6 +216,10 @@ repositorio. Ollama no publica puertos y tiene desactivadas sus funciones en la 
 | `SPOTIFY_ACCOUNTS_BASE_URL` | `https://accounts.spotify.com` | dirección donde se pide el token |
 | `SPOTIFY_API_BASE_URL` | `https://api.spotify.com` | dirección donde se consultan los géneros |
 | `SPOTIFY_TIMEOUT` | `3s` | tiempo máximo para obtener los géneros |
+| `REDIS_PASSWORD` | — | contraseña opcional de Redis |
+| `GENRES_CACHE_ENABLED` | `true` | activa o desactiva la caché de géneros en Redis |
+| `GENRES_CACHE_TTL` | `24h` | vigencia de la caché de géneros |
+| `GENRES_CACHE_TIMEOUT` | `1s` | tiempo máximo por operación en Redis |
 
 Escríbelas en `.env` solo si quieres cambiarlas: una variable vacía sustituye al valor por defecto. Con WireMock, las
 cuatro de credenciales y direcciones de Spotify quedan fijadas.
@@ -246,13 +251,15 @@ El directorio [`k8s/`](k8s/) define el despliegue endurecido en el namespace `qu
 | Archivo | Recurso | Detalle principal |
 |---|---|---|
 | [`k8s/namespace.yaml`](k8s/namespace.yaml) | `Namespace` | Aísla los recursos en `quipux-playlist` |
-| [`k8s/configmap.yaml`](k8s/configmap.yaml) | `ConfigMap` (`playlist-config`) | `JWT_TTL`, URLs y timeout de Spotify, y `API_URL=http://api.quipux-playlist.svc.cluster.local:8080` |
+| [`k8s/configmap.yaml`](k8s/configmap.yaml) | `ConfigMap` (`playlist-config`) | `JWT_TTL`, URLs y timeout de Spotify, `REDIS_HOST`/`REDIS_PORT`, `GENRES_CACHE_*` y `API_URL=http://api.quipux-playlist.svc.cluster.local:8080` |
 | [`k8s/secret.example.yaml`](k8s/secret.example.yaml) | `Secret` de ejemplo | Plantilla vacía **excluida** de `kustomization.yaml` para evitar secretos reales en Git |
 | [`k8s/api-deployment.yaml`](k8s/api-deployment.yaml) | `Deployment` (`api`) | `replicas: 1` (H2 en memoria), UID `10001`, `readOnlyRootFilesystem: true`, `emptyDir` en `/tmp`, sondas Actuator `/actuator/health/liveness` y `/readiness` sin token |
 | [`k8s/api-service.yaml`](k8s/api-service.yaml) | `Service` (`api`) | Expone el puerto `8080` dentro del clúster |
+| [`k8s/redis-deployment.yaml`](k8s/redis-deployment.yaml) | `Deployment` (`redis`) | Caché efímera (`--save "" --appendonly no --dir /tmp`), UID `999`, `readOnlyRootFilesystem: true`, `emptyDir` en `/tmp`, sondas `redis-cli ping` |
+| [`k8s/redis-service.yaml`](k8s/redis-service.yaml) | `Service` (`redis`) | Expone el puerto `6379` (`ClusterIP`) dentro del clúster |
 | [`k8s/web-deployment.yaml`](k8s/web-deployment.yaml) | `Deployment` (`web`) | UID `101`, `readOnlyRootFilesystem: true`, `emptyDir` en `/etc/nginx/conf.d`, `/var/cache/nginx` y `/tmp`, sondas HTTP `GET /` |
 | [`k8s/web-service.yaml`](k8s/web-service.yaml) | `Service` (`web`) | Expone el puerto `8080` dentro del clúster |
-| [`k8s/kustomization.yaml`](k8s/kustomization.yaml) | `Kustomization` | Incluye los 6 manifiestos anteriores (sin `secret.example.yaml`) y las etiquetas explícitas de imagen |
+| [`k8s/kustomization.yaml`](k8s/kustomization.yaml) | `Kustomization` | Incluye los 8 manifiestos anteriores (sin `secret.example.yaml`) y las etiquetas explícitas de imagen |
 
 ### Requisitos locales
 

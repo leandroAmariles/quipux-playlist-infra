@@ -1,6 +1,15 @@
 name: quipux-playlist
 
 services:
+  redis:
+    image: redis:8.12.0-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
   api:
     build: ../../quipux-playlist-backend
     environment:
@@ -13,6 +22,12 @@ services:
       - SPOTIFY_ACCOUNTS_BASE_URL
       - SPOTIFY_API_BASE_URL
       - SPOTIFY_TIMEOUT
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - GENRES_CACHE_ENABLED=${GENRES_CACHE_ENABLED:-true}
+      - GENRES_CACHE_TTL=${GENRES_CACHE_TTL:-24h}
+      - GENRES_CACHE_TIMEOUT=${GENRES_CACHE_TIMEOUT:-1s}
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
     healthcheck:

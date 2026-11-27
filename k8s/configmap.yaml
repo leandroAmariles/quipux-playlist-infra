@@ -8,3 +8,8 @@ data:
   SPOTIFY_API_BASE_URL: "https://api.spotify.com"
   SPOTIFY_TIMEOUT: "5s"
   API_URL: "http://api.quipux-playlist.svc.cluster.local:8080"
+  REDIS_HOST: "redis.quipux-playlist.svc.cluster.local"
+  REDIS_PORT: "6379"
+  GENRES_CACHE_ENABLED: "true"
+  GENRES_CACHE_TTL: "24h"
+  GENRES_CACHE_TIMEOUT: "1s"
