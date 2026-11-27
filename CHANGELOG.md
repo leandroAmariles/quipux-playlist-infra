@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/leandroAmariles/quipux-playlist-infra/compare/v0.1.0...v0.2.0) (2026-11-27)
+
+
+### Features
+
+* **HU-10:** add Redis service to Docker Compose and Kubernetes ([7c0993d](https://github.com/leandroAmariles/quipux-playlist-infra/commit/7c0993deb0cda700f722e714764cd7d05312549e))
+* **HU-10:** add Redis service to Docker Compose and Kubernetes ([05bbeae](https://github.com/leandroAmariles/quipux-playlist-infra/commit/05bbeaeab25dbcf41230c7e90a9e38438f08aeb2))
+
 ## 0.1.0 (2026-11-27)
 
 
