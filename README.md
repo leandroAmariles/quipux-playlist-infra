@@ -106,6 +106,102 @@ Para detenerlo, usa los mismos archivos:
 docker compose -f compose.yaml -f compose.wiremock.yaml down
 ```
 
+## Recomendaciones con IA (modelos locales)
+
+Por defecto la IA está desactivada y `GET /lists/{listName}/recommendations` responde con una lista fija
+(`origen: RESPALDO`). Un archivo adicional levanta [Ollama](https://ollama.com) y la pasarela
+[LiteLLM](https://docs.litellm.ai) y activa la IA en la API. Todo se ejecuta en tu equipo; no hay que instalar nada
+fuera de Docker.
+
+### Requisitos
+
+| Recurso | Medido o necesario |
+|---|---|
+| Memoria del motor de Docker | los servicios de la IA y la API usan unos 4,3 GiB en CPU; deja al menos 8 GiB |
+| Disco | imágenes de varios GB (Ollama es la mayor) y 2,2 GB de modelos |
+| GPU | opcional: NVIDIA con controlador compatible; en Windows, Docker Desktop con WSL 2 actualizado |
+| Red | solo la primera vez, para imágenes y modelos |
+
+En Windows, la memoria del motor se amplía en `%UserProfile%\.wslconfig` (`[wsl2]`, `memory=16GB`) y reiniciando WSL.
+
+### Clave
+
+Añade `AI_API_KEY` a `.env`. Genera un valor aleatorio que empiece por `sk-`; LiteLLM rechaza claves vacías o
+conocidas como inseguras.
+
+```bash
+echo "AI_API_KEY=sk-$(openssl rand -hex 32)" >> .env
+```
+
+```powershell
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+Add-Content .env ("AI_API_KEY=sk-" + [BitConverter]::ToString($b).Replace('-', '').ToLower())
+```
+
+En desarrollo local esta clave es la clave maestra de LiteLLM. Fuera de tu equipo haría falta una clave virtual con
+límites, que requiere una base de datos en LiteLLM y no está incluida.
+
+### Arrancar
+
+```bash
+docker compose -f compose.yaml -f compose.ai.yaml up -d --build
+docker compose -f compose.yaml -f compose.ai.yaml logs -f ollama-init
+```
+
+El servicio `ollama-init` descarga los modelos que falten en el volumen `ollama-models`, los deja cargados y termina.
+La API no espera a la IA: arranca aunque estos servicios no estén listos y responde con el respaldo mientras tanto.
+`down` conserva los modelos; `down -v` obliga a descargarlos otra vez.
+
+Con GPU NVIDIA añade el tercer archivo y comprueba que la columna `PROCESSOR` indica GPU:
+
+```bash
+docker compose -f compose.yaml -f compose.ai.yaml -f compose.ai.gpu.yaml up -d
+docker compose -f compose.yaml -f compose.ai.yaml exec ollama ollama ps
+```
+
+Para no reemplazar otra pila del proyecto en el mismo equipo, añade `-p <nombre>` a todos los comandos y cambia
+`API_PORT`, `WEB_PORT` y `LITELLM_PORT`.
+
+### Latencia medida
+
+Con `llama3.2:3b` en una RTX 5070 de 12 GB:
+
+| Situación | CPU | GPU |
+|---|---|---|
+| Modelo sin cargar | 10,5 s | 3,8 s |
+| En caliente | unos 8 s | menos de 1 s |
+| Primera petición tras crear el contenedor con GPU | — | 26,9 s, una vez |
+
+El backend espera 30 s (`AI_TIMEOUT`) y, si no llega la respuesta, usa el respaldo. Con 60 s o más habría que ampliar
+también el tiempo de espera del servidor web.
+
+### Variables de la IA
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `AI_API_KEY` | — (obligatoria con `compose.ai.yaml`) | clave de LiteLLM |
+| `OLLAMA_CHAT_MODEL` | `llama3.2:3b` | modelo detrás de `recomendador-chat` |
+| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | modelo detrás de `recomendador-embeddings` |
+| `AI_TIMEOUT` | `30s` | tiempo máximo de la llamada al modelo |
+| `AI_CHAT_MODEL` | `recomendador-chat` | alias que pide el backend |
+| `LITELLM_PORT` | `4000` | puerto de LiteLLM en tu equipo |
+
+### Seguridad de las imágenes
+
+Las imágenes van fijadas por digest. LiteLLM sufrió publicaciones maliciosas en 2026: antes de cambiar de versión,
+revisa sus [avisos](https://github.com/BerriAI/litellm/security/advisories) y verifica la firma:
+
+```bash
+docker run --rm ghcr.io/sigstore/cosign/cosign:v3.1.6 verify \
+  --certificate-identity https://github.com/BerriAI/project-releaser/.github/workflows/release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/berriai/litellm@<digest>
+```
+
+La versión usada (`1.111.0`) tiene un aviso de terceros sin parche, ZDI-26-1031, que el proveedor discute y requiere
+ser administrador de la pasarela. Se acepta porque LiteLLM solo escucha en `127.0.0.1` y la clave no está en el
+repositorio. Ollama no publica puertos y tiene desactivadas sus funciones en la nube.
+
 ## Variables opcionales
 
 | Variable | Por defecto | Para qué |

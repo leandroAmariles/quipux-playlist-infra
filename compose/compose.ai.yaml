@@ -1,0 +1,88 @@
+# Modelos locales y recomendaciones con IA. Se añade a la composición base:
+#   docker compose -p quipux-ia -f compose.yaml -f compose.ai.yaml up -d --build
+# Las imágenes van fijadas por digest; revisa los avisos de seguridad antes de cambiarlas.
+
+x-ollama-image: &ollama-image ollama/ollama:0.40.18@sha256:1cabd20e1762a7a8444bf4a7110b346d923cd77ab6c97c984434140638c913ec
+
+services:
+  ollama:
+    image: *ollama-image
+    environment:
+      - OLLAMA_NO_CLOUD=1
+      - OLLAMA_KEEP_ALIVE=-1
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Descarga los modelos que falten, los deja cargados y termina.
+  ollama-init:
+    image: *ollama-image
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - CHAT_MODEL=${OLLAMA_CHAT_MODEL:-llama3.2:3b}
+      - EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        for model in "$$CHAT_MODEL" "$$EMBEDDING_MODEL"; do
+          if ollama show "$$model" >/dev/null 2>&1; then
+            echo "$$model ya está descargado"
+          else
+            ollama pull "$$model"
+          fi
+        done
+        # La animación de progreso solo se muestra si la precarga falla.
+        preload() {
+          ollama run "$$1" "$$2" --keepalive -1m >/dev/null 2>/tmp/preload.log || { cat /tmp/preload.log; exit 1; }
+        }
+        preload "$$CHAT_MODEL" ""
+        preload "$$EMBEDDING_MODEL" "precarga"
+        ollama ps
+    restart: "no"
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.111.0@sha256:ce00096d012719d58c52cecfa373f7c6256dd1b0ff08f6fa607e10e9628f1f46
+    command: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
+    environment:
+      - LITELLM_MASTER_KEY=${AI_API_KEY:?define AI_API_KEY en compose/.env}
+      - LITELLM_CHAT_MODEL=ollama_chat/${OLLAMA_CHAT_MODEL:-llama3.2:3b}
+      - LITELLM_EMBEDDING_MODEL=ollama/${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      # Usa la tabla de precios incluida en la imagen en lugar de descargarla al arrancar.
+      - LITELLM_LOCAL_MODEL_COST_MAP=True
+    volumes:
+      - ./litellm/config.yaml:/etc/litellm/config.yaml:ro
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # Activa la IA en la API. No depende de los servicios anteriores: arranca aunque no estén.
+  api:
+    environment:
+      - AI_PROVIDER=openai
+      - AI_BASE_URL=http://litellm:4000/v1
+      - AI_API_KEY=${AI_API_KEY:?define AI_API_KEY en compose/.env}
+      - AI_TIMEOUT
+      - AI_CHAT_MODEL
+
+volumes:
+  ollama-models:
