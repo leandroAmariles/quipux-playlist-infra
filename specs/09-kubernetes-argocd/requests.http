@@ -1,0 +1,58 @@
+### HU-09: sondas HTTP de salud (Kubernetes y Argo CD).
+### Ejecutar contra la API y la web en local o mediante kubectl -n quipux-playlist port-forward (quickstart.md).
+###
+### Not covered here (no se validan por una petición HTTP individual; ver quickstart.md):
+###   FR-004 a FR-009 (manifiestos Kustomize y despliegue en kind), FR-010 a FR-015 (CI y protección de main en infra),
+###   FR-016 a FR-017 (release-please en infra), FR-018 a FR-023 (Argo CD y PR automático de tag), FR-024 a FR-027 (documentación, secretos y regresiones).
+
+@baseUrl = http://localhost:8080
+@webUrl = http://localhost:4200
+
+### FR-001 / US1-3 "liveness accesible sin token ni detalles internos" — expects 200 {"status":"UP"}
+GET {{baseUrl}}/actuator/health/liveness
+
+> {%
+client.test("liveness returns 200 UP without details", function () {
+    client.assert(response.status === 200, "Expected 200, got " + response.status);
+    client.assert(response.body.status === "UP", "Expected status UP");
+    client.assert(response.body.components === undefined, "Expected no internal components");
+});
+%}
+
+### FR-001 / US1-3 "readiness accesible sin token ni detalles internos" — expects 200 {"status":"UP"}
+GET {{baseUrl}}/actuator/health/readiness
+
+> {%
+client.test("readiness returns 200 UP without details", function () {
+    client.assert(response.status === 200, "Expected 200, got " + response.status);
+    client.assert(response.body.status === "UP", "Expected status UP");
+    client.assert(response.body.components === undefined, "Expected no internal components");
+});
+%}
+
+### FR-002 / US1-3 "/actuator/health raíz sigue protegido sin token" — expects 401
+GET {{baseUrl}}/actuator/health
+
+> {%
+client.test("actuator root health requires auth", function () {
+    client.assert(response.status === 401, "Expected 401, got " + response.status);
+});
+%}
+
+### FR-002 / US1-3 "otros endpoints de Actuator (/actuator/env) siguen protegidos sin token" — expects 401
+GET {{baseUrl}}/actuator/env
+
+> {%
+client.test("actuator env requires auth", function () {
+    client.assert(response.status === 401, "Expected 401, got " + response.status);
+});
+%}
+
+### FR-003 / US1-3 "sonda HTTP del frontend en GET / sin token" — expects 200
+GET {{webUrl}}/
+
+> {%
+client.test("frontend root returns 200 without auth", function () {
+    client.assert(response.status === 200, "Expected 200, got " + response.status);
+});
+%}
