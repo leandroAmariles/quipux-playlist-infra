@@ -179,7 +179,7 @@
   `git status --ignored` y el diff completo; ningún secreto ni artefacto de `data-model.md` queda versionable (SC-005)
 - [X] T040 Ejecutar el escenario 20 de `specs/15-terraform-make-up/quickstart.md`, **previa confirmación del usuario**
   porque borra los modelos, dejar el entorno levantado y anotar el resultado
-- [ ] T041 Cuando el usuario pida publicar la rama, comprobar el escenario 21 de
+- [X] T041 Cuando el usuario pida publicar la rama, comprobar el escenario 21 de
   `specs/15-terraform-make-up/quickstart.md` en el PR
 
 ---

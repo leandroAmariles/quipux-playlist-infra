@@ -58,6 +58,6 @@ Equipo de referencia, 2026-11-27.
 | 18 | OK | `compose.yaml` + `compose.ai.yaml` válidos y sin cambios |
 | 19 | OK | misma salida de `make status` en PowerShell y Git Bash |
 | 20 | OK | `no` cancela sin borrar; `si` y `CONFIRM=yes` borran clúster, volúmenes, estados y `.local/`, conservan `local.tfvars` y no tocan nada ajeno; el `up` posterior, sin estado, volúmenes ni proveedores, tardó 260 s |
-| 21 | Pendiente | requiere commit, push y PR; localmente pasan `fmt`, `validate` en Windows y en un contenedor Linux, `shellcheck`, `actionlint` y Trivy |
+| 21 | OK | PR #29: `kustomize`, `terraform` y `trivy` en verde |
 
 Corregido durante la validación: con el nodo ausente, la detección del estado tomaba el clúster por ajeno.
