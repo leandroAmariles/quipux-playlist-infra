@@ -1,0 +1,15 @@
+services:
+  wiremock:
+    image: wiremock/wiremock:3.13.2
+    volumes:
+      - ./wiremock/mappings:/home/wiremock/mappings:ro
+
+  api:
+    environment:
+      - SPOTIFY_ACCOUNTS_BASE_URL=http://wiremock:8080
+      - SPOTIFY_API_BASE_URL=http://wiremock:8080
+      - SPOTIFY_CLIENT_ID=simulado
+      - SPOTIFY_CLIENT_SECRET=simulado
+    depends_on:
+      wiremock:
+        condition: service_healthy

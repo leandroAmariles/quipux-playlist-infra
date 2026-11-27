@@ -1,0 +1,31 @@
+name: quipux-playlist
+
+services:
+  api:
+    build: ../../quipux-playlist-backend
+    environment:
+      - JWT_SECRET=${JWT_SECRET:?define JWT_SECRET en compose/.env}
+      - DEMO_USER_PASSWORD=${DEMO_USER_PASSWORD:?define DEMO_USER_PASSWORD en compose/.env}
+      - DEMO_ADMIN_PASSWORD=${DEMO_ADMIN_PASSWORD:?define DEMO_ADMIN_PASSWORD en compose/.env}
+      - JWT_TTL
+      - SPOTIFY_CLIENT_ID
+      - SPOTIFY_CLIENT_SECRET
+      - SPOTIFY_ACCOUNTS_BASE_URL
+      - SPOTIFY_API_BASE_URL
+      - SPOTIFY_TIMEOUT
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8080"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 60s
+
+  web:
+    build: ../../quipux-playlist-frontend
+    ports:
+      - "127.0.0.1:${WEB_PORT:-4200}:8080"
+    depends_on:
+      api:
+        condition: service_healthy

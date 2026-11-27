@@ -1,0 +1,80 @@
+### HU-07: la web como único punto de entrada. Requiere la composición levantada (quickstart.md).
+### Escribe las contraseñas de tu compose/.env solo en tu copia local.
+###
+### Not covered here (no se prueban con una petición; ver quickstart.md):
+###   FR-001 a FR-004 (imágenes), FR-007 (API_URL), FR-008 a FR-012 (composición), FR-016 a FR-018 (documentación),
+###   API reiniciada, web arrancada sin API y cuerpo de más de 1 MB.
+
+@webUrl = http://localhost:4200
+@baseUrl = http://localhost:4200/api
+@userPassword = <DEMO_USER_PASSWORD>
+@adminPassword = <DEMO_ADMIN_PASSWORD>
+@listName = HU07%20Canci%C3%B3n%3B%2050%25
+
+### FR-005 / US2-1 "inicio de sesión de admin a través de la web" — expects 200
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{"username": "admin", "password": "{{adminPassword}}"}
+
+> {% client.global.set("adminToken", response.body.accessToken); %}
+
+### FR-005 / US2-1 "inicio de sesión de user a través de la web" — expects 200
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{"username": "user", "password": "{{userPassword}}"}
+
+> {% client.global.set("userToken", response.body.accessToken); %}
+
+### FR-005 / US2-1 "el token llega a la API"; con WireMock activado, origen SPOTIFY (US3-1) — expects 200
+GET {{baseUrl}}/genres
+Authorization: Bearer {{userToken}}
+
+### US2-2 "crear una lista con espacios, acentos, ; y %" (Location sin /api) — expects 201
+POST {{baseUrl}}/lists
+Authorization: Bearer {{adminToken}}
+Origin: {{webUrl}}
+Content-Type: application/json
+
+{"nombre": "HU07 Canción; 50%", "descripcion": "a través de la web", "canciones": []}
+
+### US2-2 "consultar esa lista" — expects 200
+GET {{baseUrl}}/lists/{{listName}}
+Authorization: Bearer {{userToken}}
+
+### US2-3 "nombre repetido" — expects 409
+POST {{baseUrl}}/lists
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"nombre": "HU07 Canción; 50%", "canciones": []}
+
+### US2-3 "nombre vacío" — expects 400
+POST {{baseUrl}}/lists
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"nombre": "", "canciones": []}
+
+### US2-3 "user intenta crear" — expects 403
+POST {{baseUrl}}/lists
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{"nombre": "HU07 sin permiso", "canciones": []}
+
+### US2-2 "borrar esa lista" — expects 204
+DELETE {{baseUrl}}/lists/{{listName}}
+Authorization: Bearer {{adminToken}}
+
+### US2-3 "la lista ya no existe" — expects 404
+GET {{baseUrl}}/lists/{{listName}}
+Authorization: Bearer {{userToken}}
+
+### US2-4 "sesión no válida: la web recibe 401" — expects 401
+GET {{baseUrl}}/lists
+Authorization: Bearer token-vencido
+
+### FR-006 / US1-4 "enlace directo a una pantalla de la web" (devuelve index.html) — expects 200
+GET {{webUrl}}/playlists/detail?name=x
