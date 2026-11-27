@@ -52,7 +52,8 @@ services:
 
   litellm:
     image: ghcr.io/berriai/litellm:v1.111.0@sha256:ce00096d012719d58c52cecfa373f7c6256dd1b0ff08f6fa607e10e9628f1f46
-    command: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
+    # Cierra las conexiones inactivas después que el cliente: con los 5 s por defecto, el backend reutiliza una ya cerrada.
+    command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--keepalive_timeout", "75"]
     environment:
       - LITELLM_MASTER_KEY=${AI_API_KEY:?define AI_API_KEY en compose/.env}
       - LITELLM_CHAT_MODEL=ollama_chat/${OLLAMA_CHAT_MODEL:-llama3.2:3b}
