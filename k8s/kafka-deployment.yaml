@@ -86,6 +86,9 @@ spec:
               mountPath: /opt/kafka/logs
             - name: kafka-config
               mountPath: /mnt/shared/config
+            # El arranque escribe aquí la configuración final del broker.
+            - name: kafka-final-config
+              mountPath: /opt/kafka/config
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -94,6 +97,8 @@ spec:
         - name: kafka-logs
           emptyDir: {}
         - name: kafka-config
+          emptyDir: {}
+        - name: kafka-final-config
           emptyDir: {}
         - name: tmp
           emptyDir: {}
