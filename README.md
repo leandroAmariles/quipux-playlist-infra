@@ -1,125 +1,175 @@
 # quipux-playlist-infra
 
-Infraestructura del proyecto de listas de reproducción. Permite levantar la aplicación completa con Docker Compose o
-desplegarla en Kubernetes con Kustomize y Argo CD.
+Infraestructura del proyecto de listas de reproducción. `make up` levanta en tu equipo la aplicación completa en un
+clúster Kubernetes, con la IA en Docker. También se puede usar solo Docker Compose.
 
 La documentación del proyecto está en [quipux-playlist-backend](https://github.com/leandroAmariles/quipux-playlist-backend).
-Las especificaciones de infraestructura están en [`specs/07-docker-compose/`](specs/07-docker-compose/) y
-[`specs/09-kubernetes-argocd/`](specs/09-kubernetes-argocd/).
+Las especificaciones de infraestructura están en [`specs/07-docker-compose/`](specs/07-docker-compose/),
+[`specs/09-kubernetes-argocd/`](specs/09-kubernetes-argocd/) y
+[`specs/15-terraform-make-up/`](specs/15-terraform-make-up/).
+
+## Tecnologías
+
+| Capa | Tecnología | Para qué |
+|---|---|---|
+| Web | Angular 22, TypeScript 6, nginx 1.31 | interfaz; nginx sirve la web y reenvía `/api` a la API |
+| API | Java 21, Spring Boot 4.1.3 con WebFlux, springdoc 3.2 | API REST reactiva y Swagger UI |
+| Seguridad | Spring Security (OAuth2 Resource Server) con JWT | inicio de sesión y roles `admin` y `user` |
+| Resiliencia | Resilience4j | cortacircuitos ante fallos del modelo |
+| Base de datos | H2 en memoria con R2DBC | listas de reproducción |
+| Caché | Redis 8.12 y Caffeine | géneros en Redis; recomendaciones en la memoria de la API |
+| Mensajería | Apache Kafka 4.0 (KRaft, sin ZooKeeper) | eventos de auditoría de las listas |
+| IA: integración | Spring AI 2.0 | llamadas desde la API a los modelos |
+| IA: pasarela | LiteLLM 1.111 | alias de modelos y clave de acceso |
+| IA: modelos | Ollama 0.40 con `llama3.2:3b` y `nomic-embed-text` | recomendaciones y embeddings, en local |
+| IA: catálogo | PostgreSQL 18 con pgvector 0.8.7 | búsqueda de canciones por similitud |
+| Infraestructura como código | Terraform 1.9 o posterior (proveedores `kind`, `kubernetes`, `random` y `local`) | secretos, clúster y recursos de Kubernetes |
+| Clúster | kind 0.31 con Kubernetes 1.35 y Kustomize | clúster local y manifiestos |
+| Contenedores | Docker y Docker Compose | IA del clúster y alternativa sin Kubernetes |
+| Automatización | GNU Make y Bash | comandos `make` |
+| Despliegue continuo | Argo CD 3.5.9 (opcional) | sincroniza `k8s/` desde `main` |
+| Integración continua | GitHub Actions, Trivy, ShellCheck, Dependabot y release-please | validación, seguridad, actualizaciones y versiones |
+| Opcionales con Docker Compose | Langfuse y WireMock | trazas de los modelos y simulación de Spotify |
+
+Las versiones exactas están fijadas en [`k8s/`](k8s/), [`compose/`](compose/), [`terraform/`](terraform/) y en los
+repositorios de [backend](https://github.com/leandroAmariles/quipux-playlist-backend) y
+[frontend](https://github.com/leandroAmariles/quipux-playlist-frontend).
+
+### Cómo encaja
+
+```text
+make up ──> Terraform ──> clúster kind ─┬─ web (:4200) ──> api (:8080) ─┬─ redis
+        │                               └───────────────────────────────┴─ kafka
+        │                                                  │
+        └─> Docker Compose (fuera del clúster)             ├──> litellm ──> ollama (GPU o CPU)
+                                                           └──> catalog-db (pgvector)
+```
 
 ## Cómo levantarlo en local
 
-| | [Clúster Kubernetes](#clúster-local-con-kubernetes-kind) | [Docker Compose](#docker-compose) |
+| | [Clúster con `make up`](#clúster-local-con-make-up) | [Docker Compose](#docker-compose) |
 |---|---|---|
+| Qué levanta | clúster Kubernetes (kind) e IA en Docker | los contenedores, sin Kubernetes |
 | Imágenes de la API y la web | las publicadas en GHCR (no compila tu código) | se construyen desde tu código |
 | Repositorios necesarios | solo este | los tres |
-| Herramientas | Git, Docker, `kind` y `kubectl` | Git y Docker con Compose |
-| IA local, WireMock y Langfuse | no incluidos | opcionales |
+| Herramientas | Git, Docker, `make`, Terraform, `kind` y `kubectl` | Git y Docker con Compose |
+| IA local | incluida, se puede desactivar | opcional |
+| WireMock y Langfuse | no incluidos | opcionales |
 
 Las dos opciones usan los puertos `4200` y `8080`: detén una antes de arrancar la otra. En ninguna hace falta instalar
 Java, Maven ni Node, y las dos necesitan internet la primera vez.
 
-## Clúster local con Kubernetes (kind)
+## Clúster local con `make up`
 
-Levanta en un clúster [kind](https://kind.sigs.k8s.io) la web, la API, Redis y Kafka. Todos los comandos se ejecutan
-desde la raíz de este repositorio. Donde Bash y PowerShell difieren se muestran los dos; el resto sirve en ambos.
+Un solo comando crea un clúster [kind](https://kind.sigs.k8s.io) con la web, la API, Redis y Kafka, arranca en Docker
+la IA (Ollama, LiteLLM y PostgreSQL con pgvector) y conecta ambos. Especificación en
+[`specs/15-terraform-make-up/`](specs/15-terraform-make-up/).
 
-### 1. Instalar las herramientas
+Los pasos se ejecutan en PowerShell o en Bash; donde difieren se muestran los dos. Se probaron en Windows 11 con
+Docker 29.6, Compose 5.3, Terraform 1.15, `kind` 0.31, `kubectl` 1.34 y GNU Make 4.4. Linux y macOS no se han probado.
+Las imágenes del proyecto solo se publican para `linux/amd64`.
 
-- Docker en marcha. El nodo del clúster ocupó 1,7 GiB en reposo, con Argo CD instalado; deja al menos 4 GB libres para
-  Docker.
-- [`kind`](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) y
-  [`kubectl`](https://kubernetes.io/docs/tasks/tools/). No hace falta instalar `kustomize`: `kubectl` lo incluye.
+### Paso 1. Preparar Docker
+
+- Arranca Docker (en Windows y macOS, Docker Desktop). Necesita Compose 2.24 o posterior.
+- Con la IA, asigna al menos 8 GB de memoria a Docker. En Windows se configura en `%UserProfile%\.wslconfig`
+  (`[wsl2]`, `memory=16GB`) y reiniciando WSL.
+- Opcional: GPU NVIDIA con un controlador compatible; en Windows, Docker Desktop con WSL 2 actualizado. Sin GPU, la IA
+  usa la CPU.
+
+### Paso 2. Instalar las herramientas
+
+Hacen falta Git, `curl`, GNU `make`, [Terraform](https://developer.hashicorp.com/terraform/install) 1.9 o posterior,
+[`kind`](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) y
+[`kubectl`](https://kubernetes.io/docs/tasks/tools/). No hace falta Java, Maven, Node ni `kustomize`.
 
 ```powershell
-# Windows
+# Windows (choco requiere Chocolatey)
+winget install -e --id Git.Git
+winget install -e --id Hashicorp.Terraform
 winget install -e --id Kubernetes.kind
 winget install -e --id Kubernetes.kubectl
+choco install make
 ```
 
 ```bash
 # macOS
-brew install kind kubectl
+brew install git make kind kubectl hashicorp/tap/terraform
 ```
 
-Abre una terminal nueva después de instalar. Probado en Windows 11 con Docker 29.6, `kind` 0.31 y `kubectl` 1.34. Las
-imágenes del proyecto solo se publican para `linux/amd64`.
+Abre una terminal nueva y comprueba que todo responde:
 
-### 2. Clonar y crear el clúster
+```bash
+docker compose version
+terraform version
+kind version
+kubectl version --client
+make --version
+```
+
+### Paso 3. Clonar este repositorio
+
+No necesitas los repositorios de backend ni de frontend.
 
 ```bash
 git clone https://github.com/leandroAmariles/quipux-playlist-infra.git
 cd quipux-playlist-infra
-
-kind create cluster --name quipux-playlist
-kubectl config use-context kind-quipux-playlist
-kubectl apply -f k8s/namespace.yaml
 ```
 
-Si tienes otros clústeres, comprueba con `kubectl config current-context` que sigues en `kind-quipux-playlist` antes
-de aplicar o borrar nada.
+### Paso 4. Configurar (opcional)
 
-### 3. Crear el `Secret`
-
-No hay secretos reales en el repositorio: crea `playlist-secrets` una vez, con las claves de
-[`k8s/secret.example.yaml`](k8s/secret.example.yaml). `JWT_SECRET` necesita 32 bytes como mínimo y cada contraseña, de
-1 a 72.
-
-Bash o Git Bash:
-
-```bash
-USER_PASS='<elige-una-contraseña>'
-ADMIN_PASS='<elige-otra-contraseña>'
-
-kubectl -n quipux-playlist create secret generic playlist-secrets \
-  --from-literal=JWT_SECRET="$(openssl rand -base64 48)" \
-  --from-literal=DEMO_USER_PASSWORD="$USER_PASS" \
-  --from-literal=DEMO_ADMIN_PASSWORD="$ADMIN_PASS"
-```
-
-PowerShell:
+Sin configurar nada se generan las contraseñas y se usan los valores por defecto. Para cambiar puertos, contraseñas,
+credenciales de Spotify o el uso de la GPU, copia la plantilla y descomenta lo que necesites
+([variables](#configuración)):
 
 ```powershell
-$userPass = '<elige-una-contraseña>'
-$adminPass = '<elige-otra-contraseña>'
-$bytes = New-Object byte[] 48
-[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-$jwt = [Convert]::ToBase64String($bytes)
-
-kubectl -n quipux-playlist create secret generic playlist-secrets `
-  --from-literal=JWT_SECRET="$jwt" `
-  --from-literal=DEMO_USER_PASSWORD="$userPass" `
-  --from-literal=DEMO_ADMIN_PASSWORD="$adminPass"
-```
-
-Las credenciales de Spotify son opcionales: si las tienes, añade al mismo comando
-`--from-literal=SPOTIFY_CLIENT_ID=...` y `--from-literal=SPOTIFY_CLIENT_SECRET=...`.
-
-### 4. Desplegar
-
-```bash
-kubectl apply -k k8s
-kubectl -n quipux-playlist wait --for=condition=Available deployment --all --timeout=300s
-kubectl -n quipux-playlist get pods
-```
-
-Deben quedar `api`, `kafka`, `redis` y `web` en `1/1 Running`. La primera vez se descargan las imágenes; en la prueba
-tardó alrededor de un minuto. Los avisos `FailedScheduling` o `Startup probe failed` de ese primer minuto son
-normales.
-
-### 5. Abrir la aplicación
-
-Cada `port-forward` ocupa su terminal; déjalas abiertas y cierra con `Ctrl+C`.
-
-```bash
-# Terminal 1: web
-kubectl -n quipux-playlist port-forward svc/web 4200:8080
+Copy-Item terraform/local.tfvars.example terraform/local.tfvars
 ```
 
 ```bash
-# Terminal 2: API (solo si quieres usarla directamente, Swagger o Postman)
-kubectl -n quipux-playlist port-forward svc/api 8080:8080
+cp terraform/local.tfvars.example terraform/local.tfvars
 ```
+
+### Paso 5. Levantar
+
+```bash
+make up
+```
+
+Sin IA, más rápido y ligero: `make up AI=false`.
+
+El comando comprueba los requisitos, genera los secretos, crea el clúster, prepara la IA, despliega la aplicación y
+espera a que todo responda. La primera vez descarga imágenes de varios GB y 2,2 GB de modelos. Termina así:
+
+```text
+Entorno listo (IA: GPU, Argo CD: no)
+  Web      http://localhost:4200
+  API      http://localhost:8080
+  Swagger  http://localhost:8080/swagger-ui.html
+```
+
+En el equipo de referencia (RTX 5070), crear todo desde cero, incluidos los modelos y con las imágenes de Docker ya
+descargadas, tardó unos 4 minutos y medio; después de `make down`, unos 3 con IA y menos de minuto y medio sin ella;
+repetirlo sin cambios, menos de 20 segundos.
+
+### Paso 6. Ver las contraseñas
+
+```bash
+make credentials
+```
+
+Muestra las de `admin` (consulta, crea y borra) y `user` (solo consulta).
+
+### Paso 7. Comprobar que funciona
+
+```bash
+make smoke    # inicia sesión, crea una lista temporal, pide recomendaciones y la borra
+make status   # clúster, pods, contenedores de IA y direcciones
+```
+
+Con la IA, las recomendaciones tienen origen `IA` o `SIMILITUD`; sin ella, `RESPALDO`.
+
+### Paso 8. Usar la aplicación
 
 | Qué | Dirección |
 |---|---|
@@ -127,125 +177,178 @@ kubectl -n quipux-playlist port-forward svc/api 8080:8080
 | API a través de la web | <http://localhost:4200/api> |
 | API | <http://localhost:8080> |
 | Swagger UI | <http://localhost:8080/swagger-ui.html> |
-| Sondas sin token | <http://localhost:8080/actuator/health/readiness> y `/liveness` (`/actuator/health` pide token) |
 
-Entra con `admin` (consulta, crea y borra) o con `user` (solo consulta) y la contraseña que elegiste.
+No hace falta `port-forward`. Los puertos solo se abren en tu equipo (`127.0.0.1`). No hay HTTPS ni límite de intentos
+de inicio de sesión: no lo expongas en una red pública.
 
-### 6. Comprobar que funciona
-
-Desde una tercera terminal, con la web reenviada. Si la terminal es nueva, vuelve a definir la contraseña.
-
-Bash o Git Bash:
-
-```bash
-TOKEN=$(curl -s -X POST http://localhost:4200/api/auth/login -H 'Content-Type: application/json' \
-  -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASS\"}" | sed 's/.*"accessToken":"\([^"]*\)".*/\1/')
-
-curl -i -X POST http://localhost:4200/api/lists -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"nombre":"Demo","descripcion":"Prueba","canciones":[{"titulo":"Uno","anno":"1999","genero":"rock"}]}'
-
-curl -i http://localhost:4200/api/lists/Demo -H "Authorization: Bearer $TOKEN"
-
-kubectl -n quipux-playlist logs deployment/api | grep "Playlist audit event"
-```
-
-PowerShell:
+Para probar la API desde la terminal, en PowerShell, con la contraseña de `admin` del paso 6:
 
 ```powershell
-$credentials = @{ username = 'admin'; password = $adminPass } | ConvertTo-Json
-$login = Invoke-RestMethod -Method Post -Uri http://localhost:4200/api/auth/login `
-  -ContentType 'application/json' -Body $credentials
+$base = 'http://localhost:4200/api'
+$body = @{ username = 'admin'; password = '<contraseña-de-admin>' } | ConvertTo-Json
+$login = Invoke-RestMethod -Method Post -Uri "$base/auth/login" -ContentType 'application/json' -Body $body
 $headers = @{ Authorization = "Bearer $($login.accessToken)" }
 
-$song = @{ titulo = 'Uno'; anno = '1999'; genero = 'rock' }
+$song = @{ titulo = 'Uno'; artista = 'Artista'; album = 'Album'; anno = '1999'; genero = 'rock' }
 $list = @{ nombre = 'Demo'; descripcion = 'Prueba'; canciones = @($song) } | ConvertTo-Json -Depth 4
-Invoke-RestMethod -Method Post -Uri http://localhost:4200/api/lists -Headers $headers `
-  -ContentType 'application/json' -Body $list
-
-Invoke-RestMethod -Uri http://localhost:4200/api/lists/Demo -Headers $headers
-
-kubectl -n quipux-playlist logs deployment/api | Select-String 'Playlist audit event'
+Invoke-RestMethod -Method Post -Uri "$base/lists" -Headers $headers -ContentType 'application/json' -Body $list
+Invoke-RestMethod -Uri "$base/lists/Demo" -Headers $headers
+Invoke-RestMethod -Uri "$base/lists/Demo/recommendations" -Headers $headers
+Invoke-RestMethod -Method Delete -Uri "$base/lists/Demo" -Headers $headers
 ```
 
-La creación responde `201` y el registro muestra el evento `PlaylistCreated`, que confirma el paso por Kafka. Repetir la
-creación responde `409` porque la lista ya existe.
+En Bash o Git Bash:
 
-Dos respuestas esperadas en este clúster:
+```bash
+BASE=http://localhost:4200/api
+ADMIN_PASS="$(make -s credentials | awk '$1 == "admin" { print $2 }')"
+TOKEN="$(curl -s -X POST "$BASE/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASS\"}" | sed 's/.*"accessToken":"\([^"]*\)".*/\1/')"
+AUTH="Authorization: Bearer $TOKEN"
 
-- Las recomendaciones responden con `origen: RESPALDO`: no incluye los servicios de IA.
-- Sin credenciales de Spotify los géneros salen de la lista local y Redis queda vacío, porque solo guarda los de
-  Spotify.
+curl -i -X POST "$BASE/lists" -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"nombre":"Demo","descripcion":"Prueba","canciones":[{"titulo":"Uno","artista":"Artista","album":"Album","anno":"1999","genero":"rock"}]}'
+curl -i "$BASE/lists/Demo" -H "$AUTH"
+curl -i "$BASE/lists/Demo/recommendations" -H "$AUTH"
+curl -i -X DELETE "$BASE/lists/Demo" -H "$AUTH"
+```
 
-### Uso diario
+La colección de Postman está en el repositorio de backend. Para ver los eventos de auditoría y usar `kubectl`, el
+entorno tiene su propio archivo y no cambia tu contexto actual:
 
-| Para | Comando |
+```bash
+kubectl --kubeconfig .local/kubeconfig -n quipux-playlist get pods
+kubectl --kubeconfig .local/kubeconfig -n quipux-playlist logs deployment/api
+```
+
+### Paso 9. Detener o limpiar
+
+```bash
+make down    # elimina el clúster y los contenedores; conserva contraseñas, modelos y catálogo
+make up      # lo vuelve a levantar sin descargar los modelos
+make clean   # borra además modelos, catálogo, secretos y estado; pide confirmación
+```
+
+### Comandos
+
+| Comando | Qué hace |
 |---|---|
-| Ver el estado | `kubectl -n quipux-playlist get pods` |
-| Seguir los registros de la API | `kubectl -n quipux-playlist logs -f deployment/api` |
-| Volver tras reiniciar Docker o el equipo | `docker start quipux-playlist-control-plane`, esperar a que los pods vuelvan a `1/1` y repetir los `port-forward` |
-| Aplicar cambios de los manifiestos | `kubectl apply -k k8s` |
-| Reiniciar la API | `kubectl -n quipux-playlist rollout restart deployment/api` |
-| Cambiar el secreto | `kubectl -n quipux-playlist delete secret playlist-secrets`, crearlo de nuevo y reiniciar la API |
-| Borrar el clúster | `kind delete cluster --name quipux-playlist` |
+| `make up` | crea o actualiza el entorno; repetirlo sin cambios no modifica nada |
+| `make status` | clúster, pods, contenedores de IA y direcciones |
+| `make down` | elimina el clúster y los contenedores; conserva secretos, modelos y catálogo |
+| `make clean` | además borra modelos, catálogo, secretos y estado; pide confirmación (`CONFIRM=yes` sin terminal) |
+| `make credentials` | muestra las contraseñas de demostración |
+| `make smoke` | prueba de extremo a extremo con una lista temporal |
+| `make validate` | valida Terraform y, si está instalado `shellcheck`, los scripts |
 
-La base de datos está en memoria: las listas se pierden cada vez que se reinicia la API.
+`AI=true|false`, `GPU=auto|on|off` y `ARGOCD=true|false` cambian la configuración **solo en esa ejecución**: el
+siguiente `make up` sin ellos vuelve a lo configurado.
+
+Tras reiniciar Docker o el equipo, `make up` vuelve a dejar el entorno accesible. Los cambios en `k8s/` se aplican con
+`make up`, aunque no estén fusionados.
+
+### Configuración
+
+Todo tiene un valor por defecto. Para cambiarlo, copia
+[`terraform/local.tfvars.example`](terraform/local.tfvars.example) como `terraform/local.tfvars` (no se versiona).
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `ai_enabled` | `true` | IA en Docker y su conexión con la API |
+| `gpu` | `"auto"` | usar la GPU si Docker la ve; `"on"` la exige y `"off"` usa CPU |
+| `argocd_enabled` | `false` | desplegar `main` con Argo CD |
+| `web_port`, `api_port` | `4200`, `8080` | puertos en tu equipo; cambiarlos recrea el clúster |
+| `demo_user_password`, `demo_admin_password` | generadas | de 1 a 72 bytes |
+| `jwt_secret` | generado | 32 bytes como mínimo |
+| `spotify_client_id`, `spotify_client_secret` | vacíos | credenciales opcionales de Spotify |
+| `ai_api_key` | generada | clave de LiteLLM; empieza por `sk-` |
+| `catalog_db_password` | generada | solo letras y números; cambiarla exige `make clean` |
+| `ollama_chat_model`, `ollama_embedding_model` | `llama3.2:3b`, `nomic-embed-text` | modelos locales |
+| `ai_timeout` | `30s` | tiempo máximo de la recomendación |
+
+### Dónde quedan los secretos
+
+`make up` genera los que no definas y los conserva hasta `make clean`. Ninguno se versiona ni aparece en la salida, pero
+**están en texto plano en tu equipo**:
+
+| Ubicación | Contenido |
+|---|---|
+| `terraform/*/terraform.tfstate*` | todos los secretos y la clave de administrador del clúster |
+| `.local/` | `kubeconfig`, `compose.env` y los registros completos de Terraform |
+| `terraform/local.tfvars` | lo que tú definas |
+| `Secret` `playlist-secrets` del clúster | lo que lee la API |
+
+### IA en Docker
+
+- Ollama, LiteLLM y `catalog-db` corren como el proyecto de Compose `quipux-cluster`
+  ([`compose/compose.cluster.yaml`](compose/compose.cluster.yaml)), con las mismas imágenes y modelos que
+  `compose.ai.yaml`. Usan sus propios volúmenes, independientes de otras composiciones.
+- Ninguno publica puertos en tu equipo. LiteLLM y PostgreSQL se unen a la red Docker `kind` para que los pods los
+  alcancen: otros contenedores de esa red (por ejemplo, otros clústeres kind) también los ven y necesitan la clave o la
+  contraseña. Ollama no entra en esa red.
+- `make up` termina calentando los modelos: sin eso, las primeras peticiones tras crear Ollama con GPU tardan unos
+  30 segundos y las recomendaciones salen de respaldo.
+- Con `gpu = "auto"` se usa la GPU si un contenedor la ve. Comprobarlo:
+  `docker exec quipux-cluster-ollama-1 ollama ps` (columna `PROCESSOR`).
+- La API no depende de la IA: si se detiene, responde recomendaciones por similitud o de respaldo.
+- Sin IA, las recomendaciones responden con `origen: RESPALDO`.
+
+Sin credenciales de Spotify los géneros salen de la lista local y Redis queda vacío, porque solo guarda los de Spotify.
+La base de datos de la aplicación está en memoria: las listas se pierden cada vez que se reinicia la API.
 
 ### Si algo falla en el clúster
 
 | Síntoma | Causa y solución |
 |---|---|
-| `node(s) already exist for a cluster with the name` | el clúster ya existe: sigue desde `kubectl config use-context`, o bórralo |
-| `secrets "playlist-secrets" already exists` | ya está creado; para cambiarlo, mira «Uso diario» |
-| `api` en `CreateContainerConfigError` | falta `playlist-secrets`; créalo y el pod arranca solo |
-| `api` en `CrashLoopBackOff` | un valor no es válido; `kubectl -n quipux-playlist logs deployment/api --previous` dice cuál |
-| Pod en `ImagePullBackOff` | sin acceso a la imagen; `kubectl -n quipux-playlist describe pod <pod>` muestra el motivo |
-| `unable to listen on port` | puerto ocupado; usa otro a la izquierda, por ejemplo `14200:8080` |
-| El `port-forward` deja de responder | el pod se reinició; vuelve a lanzarlo |
-| `connection refused` en cualquier `kubectl` | Docker o el nodo están detenidos; mira «Uso diario» |
+| `ya existe un clúster kind 'quipux-playlist' que no creó make up` | clúster creado a mano: bórralo con el comando que indica el mensaje |
+| `el puerto ... está ocupado` | libéralo o cambia `web_port` / `api_port` |
+| `Docker no responde` | arranca Docker |
+| `terraform ... falló` | el mensaje indica el registro en `.local/logs/` |
+| Un despliegue no está listo | los comandos del mensaje muestran el motivo; `make status` resume |
+| La indexación o los modelos fallan | revisa la conexión y repite `make up`; continúa donde quedó |
+| Se interrumpió la creación | repite `make up` |
+| Se retiró un recurso de `k8s/` y sigue en el clúster | `make up` no lo elimina: `make down` y `make up` |
+
+### Limitaciones
+
+- `make up` aplica `k8s/` cuando cambian sus archivos: no revierte cambios hechos a mano ni elimina recursos retirados.
+- Un solo nodo y una réplica por servicio; el estado de Terraform es local. Es un entorno de desarrollo.
 
 ## Despliegue continuo con Argo CD
 
-En lugar de desplegar desde GitHub Actions (sin `kubeconfig` ni credenciales de clúster en los workflows), Argo CD
-observa la rama `main` de este repositorio mediante [`argocd/application.yaml`](argocd/application.yaml) (`path: k8s`,
-`prune: true`, `selfHeal: true`) sin tocar `playlist-secrets`, al estar excluido de `kustomization.yaml`.
-
-Para usar la aplicación en local es opcional. Necesita el clúster y el `Secret` de los pasos 2 y 3. Despliega lo que hay
-en la rama `main` en GitHub, no tus archivos locales, y deshace los cambios hechos a mano sobre esos recursos: no lo
-instales si vas a probar manifiestos sin fusionar. Si usas un fork, cambia `repoURL` en ese mismo archivo.
-
-### Instalación y aplicación
+Argo CD observa la rama `main` de este repositorio mediante [`argocd/application.yaml`](argocd/application.yaml)
+(`path: k8s`, `prune: true`, `selfHeal: true`), sin desplegar desde GitHub Actions ni dar credenciales del clúster a los
+workflows. No toca `playlist-secrets`, excluido de `kustomization.yaml`, ni la configuración de IA que va en él.
 
 ```bash
-kubectl create namespace argocd
-kubectl apply -n argocd --server-side --force-conflicts \
-  -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.9/manifests/install.yaml
-kubectl -n argocd rollout status deployment/argocd-server --timeout=180s
-kubectl apply -f argocd/application.yaml
-kubectl -n argocd wait --for=jsonpath='{.status.sync.status}'=Synced application/quipux-playlist --timeout=300s
-kubectl -n argocd get application quipux-playlist
+make up ARGOCD=true   # instala Argo CD v3.5.9 y espera a Synced y Healthy
+make up               # vuelve a los manifiestos locales y desinstala Argo CD
 ```
 
-En PowerShell cambia la `\` del final de línea por una comilla invertida o escribe el comando en una sola línea.
+Para dejarlo activado, define `argocd_enabled = true` en `terraform/local.tfvars`. Con Argo CD se despliega lo que hay en
+`main` en GitHub, no tus archivos locales. Si usas un fork, cambia `repoURL` en `argocd/application.yaml`.
 
 ### Acceso a la consola de Argo CD
 
 Contraseña inicial en Bash o Git Bash:
 
 ```bash
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+kubectl --kubeconfig .local/kubeconfig -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d
 ```
 
 En PowerShell:
 
 ```powershell
-$encoded = kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}"
+$encoded = kubectl --kubeconfig .local/kubeconfig -n argocd get secret argocd-initial-admin-secret `
+  -o jsonpath="{.data.password}"
 [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))
 ```
 
 Después abre el acceso:
 
 ```bash
-kubectl -n argocd port-forward svc/argocd-server 8443:443
+kubectl --kubeconfig .local/kubeconfig -n argocd port-forward svc/argocd-server 8443:443
 ```
 
 Abre <https://localhost:8443> con el usuario `admin` y la contraseña anterior.
@@ -593,21 +696,23 @@ Opcional, con [`kustomize`](https://kubectl.docs.kubernetes.io/installation/kust
 kustomize build k8s > /tmp/rendered-k8s.yaml
 trivy config --severity HIGH,CRITICAL --exit-code 1 /tmp/rendered-k8s.yaml
 trivy config --severity HIGH,CRITICAL --exit-code 1 argocd
+trivy config --severity HIGH,CRITICAL --exit-code 1 terraform
 trivy fs --scanners secret --severity HIGH,CRITICAL --exit-code 1 .
 ```
 
 ## Integración continua, versiones y protección de `main`
 
-Cada PR hacia `main` y cada push a `main` ejecutan dos comprobaciones ([`ci.yml`](.github/workflows/ci.yml)) con permisos
+Cada PR hacia `main` y cada push a `main` ejecutan tres comprobaciones ([`ci.yml`](.github/workflows/ci.yml)) con permisos
 de solo lectura (`contents: read`) y acciones de terceros fijadas por SHA:
 
 | Comprobación | Qué valida | En local |
 |---|---|---|
 | `kustomize` | `kustomize build k8s`, ausencia de `kind: Secret` y `replicas: 1` en `api` | `kustomize build k8s` |
-| `trivy` | `trivy config` sobre el renderizado de `k8s/` y `argocd/`, y `trivy fs --scanners secret` sobre el repositorio | [Validar los manifiestos](#validar-los-manifiestos) |
+| `terraform` | formato y validez de `terraform/`, y `shellcheck` de los scripts, sin credenciales ni clúster | `make validate` |
+| `trivy` | `trivy config` sobre el renderizado de `k8s/`, `argocd/` y `terraform/`, y `trivy fs --scanners secret` sobre el repositorio | [Validar los manifiestos](#validar-los-manifiestos) |
 
-- **Dependabot** ([`dependabot.yml`](.github/dependabot.yml)): revisa semanalmente las imágenes de `docker-compose` y
-  los SHA de `github-actions` con mensajes en formato Conventional Commits; todos sus PR pasan el CI antes de fusionarse.
+- **Dependabot** ([`dependabot.yml`](.github/dependabot.yml)): revisa semanalmente las imágenes de `docker-compose`, los
+  proveedores de `terraform` y los SHA de `github-actions` con mensajes en formato Conventional Commits; todos sus PR pasan el CI antes de fusionarse.
 - **Versionado con `release-please`** ([`release.yml`](.github/workflows/release.yml),
   [`release-please-config.json`](release-please-config.json)): versiona el repositorio de infraestructura con
   `release-type: simple` ([`version.txt`](version.txt) y `CHANGELOG.md`), generando tags y releases en GitHub sin
@@ -615,7 +720,7 @@ de solo lectura (`contents: read`) y acciones de terceros fijadas por SHA:
 
 ### Ajustes manuales en GitHub
 
-1. **Protección de `main`:** exige PR y las comprobaciones `kustomize` y `trivy` en verde (también para quien es
+1. **Protección de `main`:** exige PR y las comprobaciones `kustomize`, `terraform` y `trivy` en verde (también para quien es
    propietario), sin push directo, forzado ni borrado:
 
    ```bash
