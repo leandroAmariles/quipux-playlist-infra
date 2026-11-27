@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  kustomize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          kustomize build k8s > /tmp/manifests.yaml
+          if grep -qE '^kind:[[:space:]]*Secret$' /tmp/manifests.yaml; then
+            echo "Secret found in kustomize build output"
+            exit 1
+          fi
+          api_replicas=$(awk '
+            /^---$/ { in_deploy=0; is_api=0 }
+            /^kind:[[:space:]]*Deployment$/ { in_deploy=1 }
+            in_deploy && /^  name:[[:space:]]*api$/ { is_api=1 }
+            in_deploy && is_api && /^  replicas:/ { print $2; exit }
+          ' /tmp/manifests.yaml)
+          if [ "${api_replicas}" != "1" ]; then
+            echo "Expected api Deployment replicas=1, got '${api_replicas}'"
+            exit 1
+          fi
+
+  trivy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          mkdir -p /tmp/trivy-config
+          kustomize build k8s > /tmp/trivy-config/rendered-k8s.yaml
+          if [ -d argocd ]; then
+            cp argocd/*.yaml /tmp/trivy-config/
+          fi
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.2
+          scan-type: config
+          scan-ref: /tmp/trivy-config
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.2
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          severity: HIGH,CRITICAL
+          exit-code: "1"
